@@ -1,0 +1,27 @@
+[
+  {
+    "question": "What reasoning strategies does this paper propose for grounding LLM reasoning with knowledge graphs?",
+    "expected": "The paper proposes three reasoning strategies: Chain-of-Thought (CoT), Tree-of-Thought (ToT), and Graph-of-Thought (GoT), combined with two graph interaction methods: Agent (using ReACT) and Automatic Graph Exploration.",
+    "paper_ids": []
+  },
+  {
+    "question": "What benchmark does the paper use for evaluation?",
+    "expected": "The paper uses GRBench, a benchmark for domain-specific graph reasoning that includes graphs spanning various domains like healthcare, biology, chemistry, and physics.",
+    "paper_ids": []
+  },
+  {
+    "question": "What improvement does the framework achieve over CoT baselines?",
+    "expected": "The framework achieves at least 26.5% improvement over CoT baselines on GRBench, with state-of-the-art performance.",
+    "paper_ids": []
+  },
+  {
+    "question": "What are the four agent actions used for graph interaction?",
+    "expected": "The four agent actions are: RetrieveNode (find related nodes), NodeFeature (get node attributes), NeighborCheck (list neighbors), and NodeDegree (count neighbors).",
+    "paper_ids": []
+  },
+  {
+    "question": "What model sizes were used in the experiments?",
+    "expected": "The experiments used LLama 3.1 Instruct models in three sizes: 8B, 70B, and 405B (FP8 variant for the 405B model).",
+    "paper_ids": []
+  }
+]

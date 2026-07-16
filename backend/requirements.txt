@@ -1,0 +1,30 @@
+# FastAPI & server
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+python-dotenv==1.1.0
+pydantic-settings==2.9.1
+sse-starlette==2.3.5
+
+# Neo4j
+neo4j==5.28.1
+
+# LLM client (OpenAI-compatible for Ollama)
+openai==1.82.0
+
+# PDF parsing
+requests==2.32.3
+lxml==5.4.0
+pymupdf==1.25.5
+pdfplumber==0.11.6
+
+# Embeddings & NLP
+sentence-transformers==4.1.0
+scikit-learn==1.7.0
+
+# Evaluation
+rouge-score==0.1.2
+
+# Utilities
+aiofiles==24.1.0
+uuid6==2024.7.10
