@@ -117,6 +117,7 @@ async def build_kg(paper: ParsedPaper,
 
         # ── Triples-per-section cap ──
         if cap and cap > 0:
+            validated_triples.sort(key=lambda t: (-t.confidence, t.relation, t.head.lower(), t.tail.lower()))
             validated_triples = validated_triples[:cap]
 
         # ── Merge into Neo4j ──
