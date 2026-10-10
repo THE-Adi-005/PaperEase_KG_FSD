@@ -39,7 +39,8 @@ class EmbeddingService:
         return self.model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
 
     async def link_cross_paper_entities(self, paper_id: str,
-                                        config_id: str = settings.CONFIG_ID) -> int:
+                                        config_id: str = settings.CONFIG_ID,
+                                        threshold: float | None = None) -> int:
         """Create SAME_AS edges between similar concepts across papers within the same config_id.
         
         Returns count of new SAME_AS edges created.
@@ -72,13 +73,13 @@ class EmbeddingService:
         sim_matrix = cosine_similarity(new_embeddings, other_embeddings)
 
         # Create SAME_AS edges above threshold
-        threshold = settings.SAME_AS_THRESHOLD
+        thresh = threshold if threshold is not None else settings.SAME_AS_THRESHOLD
         link_count = 0
 
         async with neo4j_service.driver.session() as session:
             for i, new_node in enumerate(new_nodes):
                 for j, other_node in enumerate(other_nodes):
-                    if sim_matrix[i, j] >= threshold:
+                    if sim_matrix[i, j] >= thresh:
                         # Avoid self-links and exact duplicates
                         if new_node["name"].lower() == other_node["name"].lower():
                             sim = 1.0

@@ -772,7 +772,58 @@ class Neo4jService:
                 "graph_density": graph_density,
             }
 
+    async def delete_config(self, config_id: str) -> dict:
+        """Safely delete all entity nodes and semantic edges for a non-default config_id.
+        
+        Refuses to delete config_id 'default'.
+        """
+        if not config_id or config_id == "default":
+            raise ValueError(f"Refusing to delete protected or empty config_id: '{config_id}'")
+
+        logger.info(f"Deleting KG nodes and edges for config_id='{config_id}'...")
+
+        async with self.driver.session() as session:
+            try:
+                # Batch delete relationships with config_id
+                await session.run(
+                    """
+                    MATCH ()-[r]->()
+                    WHERE r.config_id = $cid
+                    CALL {
+                        WITH r
+                        DELETE r
+                    } IN TRANSACTIONS OF 1000 ROWS
+                    """,
+                    cid=config_id,
+                )
+                # Batch delete entity nodes with config_id
+                await session.run(
+                    """
+                    MATCH (n:Entity)
+                    WHERE n.config_id = $cid
+                    CALL {
+                        WITH n
+                        DETACH DELETE n
+                    } IN TRANSACTIONS OF 1000 ROWS
+                    """,
+                    cid=config_id,
+                )
+            except Exception as e:
+                logger.warning(f"Batch transaction delete failed, falling back to standard delete: {e}")
+                await session.run(
+                    "MATCH ()-[r]->() WHERE r.config_id = $cid DELETE r",
+                    cid=config_id,
+                )
+                await session.run(
+                    "MATCH (n:Entity) WHERE n.config_id = $cid DETACH DELETE n",
+                    cid=config_id,
+                )
+
+        logger.info(f"Successfully deleted config_id='{config_id}'.")
+        return {"status": "deleted", "config_id": config_id}
+
 
 # Singleton
 neo4j_service = Neo4jService()
+
 
