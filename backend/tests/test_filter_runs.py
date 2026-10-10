@@ -1,5 +1,6 @@
 import pytest
 from app.config import settings
+from app.triple_filters import is_generic
 from app.schema_profiles import PROFILES, get_active_profile
 from app.services.kg_builder import filter_runs, _self_consistency_filter
 
@@ -97,3 +98,43 @@ def test_allow_dynamic_false_drops_dynamic_relation(three_runs):
     )
     rels_with_dyn = [t.relation for t in res_with_dyn]
     assert "CUSTOM_DYNAMIC_REL" in rels_with_dyn
+
+
+def test_is_generic_detection():
+    assert is_generic("Our approach") is True
+    assert is_generic("  our   approach  ") is True
+    assert is_generic("BERT") is False
+    assert is_generic("Transformer") is False
+
+
+def test_filter_runs_drop_generic():
+    profile = PROFILES["R7"]
+    runs = [
+        [
+            {"head": "our approach", "head_type": "Method", "relation": "USES_METHOD", "tail": "Transformer", "tail_type": "Concept"},
+            {"head": "BERT", "head_type": "Method", "relation": "USES_METHOD", "tail": "Transformer", "tail_type": "Concept"},
+        ]
+    ]
+
+    # When drop_generic=False: keeps "our approach"
+    res_keep = filter_runs(
+        runs, "p1", "s1",
+        vote_fraction=0.5, profile=profile,
+        allow_dynamic=True, enforce_signatures=False, cap=0,
+        drop_generic=False,
+    )
+    heads_keep = [t.head for t in res_keep]
+    assert "our approach" in heads_keep
+    assert "BERT" in heads_keep
+
+    # When drop_generic=True: drops "our approach", keeps "BERT"
+    res_drop = filter_runs(
+        runs, "p1", "s1",
+        vote_fraction=0.5, profile=profile,
+        allow_dynamic=True, enforce_signatures=False, cap=0,
+        drop_generic=True,
+    )
+    heads_drop = [t.head for t in res_drop]
+    assert "our approach" not in heads_drop
+    assert "BERT" in heads_drop
+

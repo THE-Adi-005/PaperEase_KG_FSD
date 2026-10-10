@@ -25,7 +25,7 @@ from app.schema_profiles import get_active_profile, SchemaProfile, ENTITY_TYPES
 from app.services.llm_client import llm_client
 from app.services.neo4j_client import neo4j_service
 from app.utils.table_parser import table_to_triples
-from app.triple_filters import min_votes
+from app.triple_filters import min_votes, is_generic
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +182,7 @@ def filter_runs(
     allow_dynamic: bool,
     enforce_signatures: bool,
     cap: int = 0,
+    drop_generic: bool = False,
 ) -> list[Triple]:
     """Pure filter: counts votes, sanitizes types, validates triples, sorts deterministically and caps.
 
@@ -206,6 +207,9 @@ def filter_runs(
             if not head or not tail or not relation:
                 continue
 
+            if drop_generic and (is_generic(head) or is_generic(tail)):
+                continue
+
             key = (head.lower(), relation, tail.lower())
             if key not in seen_in_run:
                 seen_in_run.add(key)
@@ -220,6 +224,12 @@ def filter_runs(
     for key, count in triple_counts.items():
         if count >= threshold:
             raw = triple_map[key]
+            head = raw.get("head", "").strip()
+            tail = raw.get("tail", "").strip()
+
+            if drop_generic and (is_generic(head) or is_generic(tail)):
+                continue
+
             relation = normalize_relation(raw.get("relation", ""))
             head_type = sanitize_type(raw.get("head_type", "Concept"))
             tail_type = sanitize_type(raw.get("tail_type", "Concept"))
@@ -239,10 +249,10 @@ def filter_runs(
                 register_dynamic_relation(relation)
 
             majority_triples.append(Triple(
-                head=raw.get("head", "").strip(),
+                head=head,
                 head_type=head_type,
                 relation=relation,
-                tail=raw.get("tail", "").strip(),
+                tail=tail,
                 tail_type=tail_type,
                 source_paper_id=paper_id,
                 source_section_id=section_id,
@@ -275,6 +285,7 @@ def _self_consistency_filter(
         allow_dynamic=settings.ALLOW_DYNAMIC_RELATIONS,
         enforce_signatures=settings.ENFORCE_TYPE_SIGNATURES,
         cap=c,
+        drop_generic=settings.DROP_GENERIC,
     )
 
 

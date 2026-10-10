@@ -78,6 +78,7 @@ async def build_config(cfg: dict) -> dict:
     cap = int(cfg.get("cap", 0))
     enforce_signatures = bool(cfg.get("enforce_signatures", False))
     allow_dynamic = bool(cfg.get("allow_dynamic", False))
+    drop_generic = bool(cfg.get("drop_generic", False))
     relation_subset = cfg.get("relation_subset")
     if relation_subset is not None:
         relation_subset = set(relation_subset)
@@ -138,6 +139,7 @@ async def build_config(cfg: dict) -> dict:
             allow_dynamic=allow_dynamic,
             enforce_signatures=enforce_signatures,
             cap=cap,
+            drop_generic=drop_generic,
         )
 
         if relation_subset is not None:
@@ -215,6 +217,7 @@ async def build_config(cfg: dict) -> dict:
     print(f"Vote Fraction:             {vote_fraction}")
     print(f"Cap:                       {cap if cap > 0 else 'None (uncapped)'}")
     print(f"Allow Dynamic / Sigs:      {allow_dynamic} / {enforce_signatures}")
+    print(f"Drop Generic:              {drop_generic}")
     print(f"Total Raw Triples:         {total_before_filtering}")
     print(f"Filtered LLM Triples:      {total_after_filtering}")
     print(f"Total Entity Nodes:        {stats.get('total_nodes', 0)}")

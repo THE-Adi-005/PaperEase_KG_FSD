@@ -14,3 +14,22 @@ def graph_metrics(total_nodes: int, total_edges: int) -> tuple[float, float]:
     else:
         density = 0.0
     return avg_degree, density
+
+
+GENERIC_ENTITIES = {
+    "method", "methods", "approach", "our approach", "our method",
+    "proposed method", "the proposed method", "proposed approach",
+    "framework", "our framework", "model", "our model", "the model",
+    "system", "our system", "technique", "algorithm", "baseline",
+    "baselines", "this paper", "this work", "this study", "this section",
+    "the section", "paper", "results", "experiments", "task", "tasks",
+    "data", "dataset", "datasets", "metric", "metrics", "ours", "we", "it",
+}
+
+
+def is_generic(name: str) -> bool:
+    """Check if an entity name is a generic placeholder."""
+    if not name:
+        return False
+    collapsed = " ".join(name.strip().lower().split())
+    return collapsed in GENERIC_ENTITIES

@@ -58,7 +58,7 @@ async def run_migration(apply: bool = False):
             # 1. Find semantic entity nodes needing migration
             find_nodes_cypher = """
                 MATCH (n)
-                WHERE any(lbl IN labels(n) WHERE lbl IN $labels)
+                WHERE any(lbl IN labels(n) WHERE lbl IN $labels) OR 'Entity' IN labels(n)
                 RETURN elementId(n) as eid, labels(n) as lbls, n.name as name,
                        n.config_id as cid, n.norm_name as norm
             """
@@ -67,6 +67,7 @@ async def run_migration(apply: bool = False):
             nodes_to_update = [
                 n for n in nodes
                 if n["cid"] is None or n["norm"] is None or "Entity" not in n["lbls"]
+                or not any(l in SEMANTIC_ENTITY_LABELS for l in n["lbls"])
             ]
             logger.info("Found %d semantic entity nodes in Neo4j (%d need update).", len(nodes), len(nodes_to_update))
 
@@ -92,7 +93,7 @@ async def run_migration(apply: bool = False):
             # 3. Always generate & print DUPLICATE REPORT
             dup_cypher = """
                 MATCH (n)
-                WHERE any(lbl IN labels(n) WHERE lbl IN $labels)
+                WHERE any(lbl IN labels(n) WHERE lbl IN $labels) OR 'Entity' IN labels(n)
                 OPTIONAL MATCH (n)-[r]-()
                 WITH n, count(r) AS degree
                 WITH coalesce(n.norm_name, toLower(trim(n.name))) AS norm_name,
@@ -133,6 +134,7 @@ async def run_migration(apply: bool = False):
                 normalized = norm_name(raw_name)
                 lbls = record["lbls"]
                 is_metric = "Metric" in lbls
+                has_semantic = any(l in SEMANTIC_ENTITY_LABELS for l in lbls)
 
                 metric_params = {}
                 if is_metric and raw_name:
@@ -149,6 +151,10 @@ async def run_migration(apply: bool = False):
                         n.config_id = coalesce(n.config_id, 'default'),
                         n.norm_name = coalesce(n.norm_name, $norm)
                 """
+                if not has_semantic:
+                    update_cypher += """
+                        SET n:Concept
+                    """
                 if metric_params:
                     update_cypher += """
                         SET n.metric_name = coalesce(n.metric_name, $metric_name),

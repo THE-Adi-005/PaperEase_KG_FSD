@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     VOTE_FRACTION: float = 0.5          # pass if count >= ceil(N * VOTE_FRACTION)
     ENFORCE_TYPE_SIGNATURES: bool = False  # Reject triples violating head/tail type constraints
     ALLOW_DYNAMIC_RELATIONS: bool = True   # Accept LLM relations not in active profile
+    DROP_GENERIC: bool = False             # Drop triples where head or tail is a generic placeholder
 
     # Multi-agent pipeline config
     MULTI_AGENT_ENABLED: bool = True

@@ -22,6 +22,7 @@ BASE_CONFIG = {
     "cap": 0,
     "enforce_signatures": False,
     "allow_dynamic": False,
+    "drop_generic": False,
     "relation_subset": None,
     "include_tables": True,
     "enable_same_as": True,
@@ -160,6 +161,13 @@ def generate_configs() -> list[str]:
     c_sa_090["same_as_threshold"] = 0.90
     dump_yaml(c_sa_090, CONFIGS_DIR / "cfg_sa_090.yaml")
     created.append("cfg_sa_090")
+
+    # 8. Generic filter
+    c_nogeneric = copy.deepcopy(BASE_CONFIG)
+    c_nogeneric["config_id"] = "cfg_nogeneric"
+    c_nogeneric["drop_generic"] = True
+    dump_yaml(c_nogeneric, CONFIGS_DIR / "cfg_nogeneric.yaml")
+    created.append("cfg_nogeneric")
 
     return created
 

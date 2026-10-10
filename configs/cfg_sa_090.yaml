@@ -5,6 +5,7 @@ vote_fraction: 0.5
 cap: 0
 enforce_signatures: false
 allow_dynamic: false
+drop_generic: false
 relation_subset: null
 include_tables: true
 enable_same_as: true
