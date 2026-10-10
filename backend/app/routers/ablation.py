@@ -51,7 +51,7 @@ async def experiment_status():
 
 
 @router.get("/graph-stats")
-async def get_graph_stats(paper_id: Optional[str] = Query(None)):
+async def get_graph_stats(paper_id: Optional[str] = Query(None), config_id: Optional[str] = Query(None)):
     """Get current graph topology statistics."""
-    stats = await collect_graph_stats(paper_id)
+    stats = await collect_graph_stats(paper_id, config_id=config_id)
     return asdict(stats)

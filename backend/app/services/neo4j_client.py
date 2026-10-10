@@ -1,12 +1,16 @@
 """Neo4j async client — MERGE operations, agent tool queries, schema setup.
 
 Uses the official neo4j async driver. All Cypher queries are parameterized.
-Every edge carries source_paper_id and source_section_id for provenance.
+Every semantic edge carries source_paper_id, source_section_id, config_id,
+and confidence for provenance and ablation isolation.
+Entity nodes are MERGED on (norm_name, config_id) with a shared :Entity base
+label so the Entity(norm_name, config_id) composite index is used.
 """
 
 from neo4j import AsyncGraphDatabase, AsyncDriver
 import logging
 import json
+import re
 from typing import Optional
 
 from app.config import settings
@@ -14,9 +18,36 @@ from app.models.schemas import (
     Triple, ParsedPaper, GraphNode, GraphEdge, SubGraph,
     PaperInfo, PaperStatus, FigureData, TableData,
 )
-from app.models.neo4j_schema import SETUP_QUERIES
+from app.models.neo4j_schema import SETUP_QUERIES, GRAPH_STATS_EXCLUDE_RELATIONS
+from app.schema_profiles import norm_name as _norm
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_metric_tail(tail: str) -> dict:
+    """Parse a metric tail string into structured properties.
+
+    Examples::
+
+        _parse_metric_tail("F1=92.4")          -> {metric_name: 'F1',   value: 92.4,  is_percent: False}
+        _parse_metric_tail("accuracy=88.1%")   -> {metric_name: 'acc.', value: 88.1,  is_percent: True}
+        _parse_metric_tail("BLEU")             -> {metric_name: 'BLEU', value: None,  is_percent: False}
+
+    Name is kept unchanged; value is parsed as float without rescaling.
+    """
+    m = re.match(r'^(.+?)=(.+)$', tail.strip())
+    if m:
+        metric_name = m.group(1).strip()
+        value_str = m.group(2).strip()
+        is_percent = value_str.endswith('%')
+        if is_percent:
+            value_str = value_str[:-1].strip()
+        try:
+            value = float(value_str)
+            return {'metric_name': metric_name, 'value': value, 'is_percent': is_percent}
+        except ValueError:
+            pass
+    return {'metric_name': tail, 'value': None, 'is_percent': False}
 
 
 class Neo4jService:
@@ -39,6 +70,20 @@ class Neo4jService:
                 except Exception as e:
                     # Some queries may fail if index exists, that's fine
                     logger.debug(f"Schema setup note: {e}")
+
+        # APOC startup check (required for merge_triples)
+        async with self.driver.session() as session:
+            try:
+                result = await session.run("RETURN apoc.version() AS ver")
+                rec = await result.single()
+                logger.info(f"APOC version: {rec['ver']}")
+            except Exception as e:
+                logger.warning(
+                    f"APOC not detected: {e}. "
+                    "merge_triples will fail without APOC. "
+                    "Ensure NEO4J_PLUGINS=[\"apoc\"] in docker-compose."
+                )
+
         logger.info("Neo4j schema initialized")
 
     async def close(self):
@@ -138,34 +183,90 @@ class Neo4jService:
 
     # ── Triple Merging ───────────────────────────────────────────────
 
-    async def merge_triples(self, triples: list[Triple]) -> int:
-        """MERGE extracted triples into Neo4j. Returns count of triples merged."""
+    async def merge_triples(self, triples: list[Triple],
+                             config_id: str = "default") -> int:
+        """MERGE extracted triples into Neo4j. Returns count of triples merged.
+
+        Entity nodes are keyed on (norm_name, config_id) using the :Entity base
+        label so the composite index is hit. Type-specific labels (e.g. :Method)
+        are added on every merge — not only on creation — via APOC so a node
+        can accumulate labels if different extractions disagree on type.
+        Confidence is written to the edge on creation.
+        Metric tail nodes get extra metric_name / value / is_percent properties.
+        """
         count = 0
         async with self.driver.session() as session:
             for t in triples:
+                head_norm = _norm(t.head)
+                tail_norm = _norm(t.tail)
+
+                # Parse metric properties for Metric tail nodes
+                if t.tail_type == "Metric":
+                    mp = _parse_metric_tail(t.tail)
+                else:
+                    mp = {"metric_name": None, "value": None, "is_percent": None}
+
                 try:
-                    # Use APOC for dynamic relationship types
                     await session.run(
-                        """MERGE (h {name: $head})
-                           ON CREATE SET h:""" + t.head_type + """
-                           MERGE (t {name: $tail})
-                           ON CREATE SET t:""" + t.tail_type + """
-                           WITH h, t
-                           CALL apoc.merge.relationship(
-                               h, $rel_type, 
-                               {source_paper_id: $pid, source_section_id: $sid},
-                               {},
-                               t, {}
-                           ) YIELD rel
-                           RETURN rel""",
-                        head=t.head, tail=t.tail,
+                        """
+                        // ── Head node: MERGE on (norm_name, config_id) ──
+                        MERGE (h:Entity {norm_name: $head_norm, config_id: $cid})
+                        ON CREATE SET h.name = $head,
+                                      h.norm_name = $head_norm,
+                                      h.config_id = $cid
+                        WITH h
+                        CALL apoc.create.addLabels(h, [$head_type]) YIELD node AS h_node
+
+                        // ── Tail node: MERGE on (norm_name, config_id) ──
+                        MERGE (t:Entity {norm_name: $tail_norm, config_id: $cid})
+                        ON CREATE SET t.name = $tail,
+                                      t.norm_name = $tail_norm,
+                                      t.config_id = $cid,
+                                      t.metric_name = $metric_name,
+                                      t.value = $metric_value,
+                                      t.is_percent = $is_percent
+                        ON MATCH SET
+                            t.metric_name = CASE WHEN t.metric_name IS NULL
+                                                 THEN $metric_name ELSE t.metric_name END,
+                            t.value       = CASE WHEN t.value IS NULL
+                                                 THEN $metric_value ELSE t.value END,
+                            t.is_percent  = CASE WHEN t.is_percent IS NULL
+                                                 THEN $is_percent  ELSE t.is_percent  END
+                        WITH h_node, t
+                        CALL apoc.create.addLabels(t, [$tail_type]) YIELD node AS t_node
+
+                        // ── Semantic edge with provenance + confidence ──
+                        WITH h_node, t_node
+                        CALL apoc.merge.relationship(
+                            h_node, $rel_type,
+                            {source_paper_id: $pid, source_section_id: $sid,
+                             config_id: $cid},
+                            {confidence: $confidence},
+                            t_node, {}
+                        ) YIELD rel
+                        RETURN rel
+                        """,
+                        head=t.head,
+                        head_norm=head_norm,
+                        head_type=t.head_type,
+                        tail=t.tail,
+                        tail_norm=tail_norm,
+                        tail_type=t.tail_type,
                         rel_type=t.relation,
                         pid=t.source_paper_id,
                         sid=t.source_section_id,
+                        cid=config_id,
+                        confidence=t.confidence,
+                        metric_name=mp["metric_name"],
+                        metric_value=mp["value"],
+                        is_percent=mp["is_percent"],
                     )
                     count += 1
                 except Exception as e:
-                    logger.warning(f"Failed to merge triple ({t.head})-[{t.relation}]->({t.tail}): {e}")
+                    logger.warning(
+                        f"Failed to merge triple "
+                        f"({t.head})-[{t.relation}]->({t.tail}): {e}"
+                    )
         return count
 
     # ── Paper Status ─────────────────────────────────────────────────
@@ -284,7 +385,8 @@ class Neo4jService:
     # ── Agent Tool Functions (Cypher-backed) ─────────────────────────
 
     async def retrieve_node(self, keyword: str,
-                             paper_ids: Optional[list[str]] = None) -> list[dict]:
+                             paper_ids: Optional[list[str]] = None,
+                             config_id: Optional[str] = None) -> list[dict]:
         """Full-text search for nodes matching keyword. Used by RetrieveNode agent tool."""
         async with self.driver.session() as session:
             # Use full-text index
@@ -292,22 +394,29 @@ class Neo4jService:
                 CALL db.index.fulltext.queryNodes('entity_name_index', $keyword)
                 YIELD node, score
                 WHERE score > 0.5
+                  AND (NOT 'Entity' IN labels(node) OR $cid IS NULL OR coalesce(node.config_id, 'default') = $cid)
             """
             if paper_ids:
                 # Filter to specific papers by checking edges
                 query += """
-                    AND EXISTS {
-                        MATCH ()-[r]->(node) WHERE r.source_paper_id IN $pids
-                    } OR EXISTS {
-                        MATCH (node)-[r]->() WHERE r.source_paper_id IN $pids
-                    }
+                    AND (
+                        EXISTS {
+                            MATCH ()-[r]->(node)
+                            WHERE r.source_paper_id IN $pids
+                              AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                        } OR EXISTS {
+                            MATCH (node)-[r]->()
+                            WHERE r.source_paper_id IN $pids
+                              AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                        }
+                    )
                 """
             query += """
                 RETURN node, labels(node) as labels, score
                 ORDER BY score DESC LIMIT 10
             """
             result = await session.run(
-                query, keyword=keyword, pids=paper_ids or [],
+                query, keyword=keyword, pids=paper_ids or [], cid=config_id,
             )
             nodes = []
             async for record in result:
@@ -321,13 +430,17 @@ class Neo4jService:
                 })
             return nodes
 
-    async def node_feature(self, node_name: str, feature: str) -> str:
+    async def node_feature(self, node_name: str, feature: str,
+                           config_id: Optional[str] = None) -> str:
         """Get a specific feature/property of a node. Used by NodeFeature agent tool."""
         async with self.driver.session() as session:
+            norm = _norm(node_name)
             result = await session.run(
-                """MATCH (n) WHERE n.name = $name OR n.id = $name OR n.title = $name
+                """MATCH (n)
+                   WHERE (n.name = $name OR n.id = $name OR n.title = $name OR n.norm_name = $norm)
+                     AND (NOT 'Entity' IN labels(n) OR $cid IS NULL OR coalesce(n.config_id, 'default') = $cid)
                    RETURN n, labels(n) as labels LIMIT 1""",
-                name=node_name,
+                name=node_name, norm=norm, cid=config_id,
             )
             record = await result.single()
             if not record:
@@ -342,24 +455,48 @@ class Neo4jService:
             return f"Feature '{feature}' not found. Available: {list(props.keys())}"
 
     async def neighbor_check(self, node_name: str,
-                              edge_type: Optional[str] = None) -> list[dict]:
-        """List neighbors of a node. Used by NeighborCheck agent tool."""
+                              edge_type: Optional[str] = None,
+                              paper_ids: Optional[list[str]] = None,
+                              config_id: Optional[str] = None) -> list[dict]:
+        """List neighbors of a node. Used by NeighborCheck agent tool.
+
+        Optional filters:
+          paper_ids  — restrict to edges whose source_paper_id is in this list
+          config_id  — restrict to edges whose config_id matches (or is missing,
+                       treated as 'default' via coalesce)
+        """
         async with self.driver.session() as session:
             query = """
                 MATCH (n)-[r]->(m)
-                WHERE (n.name = $name OR n.id = $name) AND ($etype IS NULL OR type(r) = $etype)
+                WHERE (n.name = $name OR n.id = $name OR n.norm_name = $norm_name)
+                  AND ($etype IS NULL OR type(r) = $etype)
+                  AND ($pids IS NULL OR r.source_paper_id IN $pids)
+                  AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
                 OPTIONAL MATCH (p:Paper {id: r.source_paper_id})
-                RETURN m.name as name, m.id as id, labels(m)[0] as type, type(r) as rel_type,
+                RETURN m.name as name, m.id as id, labels(m)[0] as type,
+                       type(r) as rel_type,
                        coalesce(p.title, r.source_paper_id, 'Shared') as source_paper
                 UNION
                 MATCH (m)-[r]->(n)
-                WHERE (n.name = $name OR n.id = $name) AND ($etype IS NULL OR type(r) = $etype)
+                WHERE (n.name = $name OR n.id = $name OR n.norm_name = $norm_name)
+                  AND ($etype IS NULL OR type(r) = $etype)
+                  AND ($pids IS NULL OR r.source_paper_id IN $pids)
+                  AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
                 OPTIONAL MATCH (p:Paper {id: r.source_paper_id})
-                RETURN m.name as name, m.id as id, labels(m)[0] as type, type(r) as rel_type,
+                RETURN m.name as name, m.id as id, labels(m)[0] as type,
+                       type(r) as rel_type,
                        coalesce(p.title, r.source_paper_id, 'Shared') as source_paper
                 LIMIT 25
             """
-            result = await session.run(query, name=node_name, etype=edge_type)
+            norm = _norm(node_name)
+            result = await session.run(
+                query,
+                name=node_name,
+                norm_name=norm,
+                etype=edge_type,
+                pids=paper_ids,
+                cid=config_id,
+            )
             neighbors = []
             async for record in result:
                 neighbors.append({
@@ -372,14 +509,19 @@ class Neo4jService:
             return neighbors
 
     async def node_degree(self, node_name: str,
-                           edge_type: Optional[str] = None) -> int:
+                           edge_type: Optional[str] = None,
+                           paper_ids: Optional[list[str]] = None,
+                           config_id: Optional[str] = None) -> int:
         """Count neighbors of a node. Used by NodeDegree agent tool."""
-        neighbors = await self.neighbor_check(node_name, edge_type)
+        neighbors = await self.neighbor_check(
+            node_name, edge_type, paper_ids=paper_ids, config_id=config_id
+        )
         return len(neighbors)
 
     # ── Subgraph from reasoning trace ────────────────────────────────
 
-    async def get_subgraph_for_nodes(self, node_names: list[str]) -> SubGraph:
+    async def get_subgraph_for_nodes(self, node_names: list[str],
+                                     config_id: Optional[str] = None) -> SubGraph:
         """Get the subgraph connecting the given nodes (for reasoning trace viz)."""
         if not node_names:
             return SubGraph()
@@ -387,12 +529,16 @@ class Neo4jService:
         async with self.driver.session() as session:
             result = await session.run(
                 """UNWIND $names AS name
-                   MATCH (n) WHERE n.name = name OR n.id = name
+                   MATCH (n)
+                   WHERE (n.name = name OR n.id = name OR n.norm_name = toLower(trim(name)))
+                     AND (NOT 'Entity' IN labels(n) OR $cid IS NULL OR coalesce(n.config_id, 'default') = $cid)
                    WITH collect(n) as nodes
                    UNWIND nodes as n
-                   OPTIONAL MATCH (n)-[r]-(m) WHERE m IN nodes
+                   OPTIONAL MATCH (n)-[r]-(m)
+                   WHERE m IN nodes
+                     AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
                    RETURN DISTINCT n, r, m""",
-                names=node_names,
+                names=node_names, cid=config_id,
             )
             nodes_map = {}
             edges_list = []
@@ -511,6 +657,113 @@ class Neo4jService:
                 ))
             return tables
 
+    async def get_semantic_graph_stats(
+        self,
+        paper_id: Optional[str] = None,
+        config_id: Optional[str] = None,
+    ) -> dict:
+        """Return graph topology stats for semantic entities and edges only.
+
+        Excludes structural relations (AUTHORED_BY, CONTAINS_SECTION, CONTAINS_FIGURE,
+        CONTAINS_TABLE, ILLUSTRATED_BY).
+        Filters by paper_id and/or config_id if provided.
+        """
+        async with self.driver.session() as session:
+            # Semantic nodes count
+            node_query = """
+                MATCH (n:Entity)
+                WHERE ($cid IS NULL OR coalesce(n.config_id, 'default') = $cid)
+            """
+            if paper_id:
+                node_query += """
+                    AND EXISTS {
+                        MATCH ()-[r]->(n)
+                        WHERE r.source_paper_id = $pid
+                          AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                    }
+                """
+            node_query += " RETURN count(DISTINCT n) as count"
+            res = await session.run(node_query, cid=config_id, pid=paper_id)
+            rec = await res.single()
+            total_nodes = rec["count"] if rec else 0
+
+            # Semantic edges count
+            exclude_list = list(GRAPH_STATS_EXCLUDE_RELATIONS)
+            edge_query = """
+                MATCH (h)-[r]->(t)
+                WHERE NOT type(r) IN $exclude
+                  AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                  AND ($pid IS NULL OR r.source_paper_id = $pid)
+                RETURN count(r) as count
+            """
+            res = await session.run(edge_query, exclude=exclude_list, cid=config_id, pid=paper_id)
+            rec = await res.single()
+            total_edges = rec["count"] if rec else 0
+
+            # Node counts by semantic label
+            node_type_query = """
+                MATCH (n:Entity)
+                WHERE ($cid IS NULL OR coalesce(n.config_id, 'default') = $cid)
+            """
+            if paper_id:
+                node_type_query += """
+                    AND EXISTS {
+                        MATCH ()-[r]->(n)
+                        WHERE r.source_paper_id = $pid
+                          AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                    }
+                """
+            node_type_query += """
+                UNWIND [lbl IN labels(n) WHERE lbl <> 'Entity'] as lbl
+                RETURN lbl, count(DISTINCT n) as count ORDER BY count DESC
+            """
+            res = await session.run(node_type_query, cid=config_id, pid=paper_id)
+            node_type_counts = {}
+            async for record in res:
+                node_type_counts[record["lbl"]] = record["count"]
+
+            # Relation counts
+            rel_query = """
+                MATCH (h)-[r]->(t)
+                WHERE NOT type(r) IN $exclude
+                  AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                  AND ($pid IS NULL OR r.source_paper_id = $pid)
+                RETURN type(r) as rel, count(r) as count ORDER BY count DESC
+            """
+            res = await session.run(rel_query, exclude=exclude_list, cid=config_id, pid=paper_id)
+            relation_type_counts = {}
+            async for record in res:
+                relation_type_counts[record["rel"]] = record["count"]
+
+            # SAME_AS edges count
+            same_as_query = """
+                MATCH ()-[r:SAME_AS]->()
+                WHERE ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                  AND ($pid IS NULL OR r.source_paper_id = $pid)
+                RETURN count(r) as count
+            """
+            res = await session.run(same_as_query, cid=config_id, pid=paper_id)
+            rec = await res.single()
+            same_as_edges = rec["count"] if rec else 0
+
+            graph_density = 0.0
+            if total_nodes > 1:
+                max_edges = total_nodes * (total_nodes - 1)
+                graph_density = round(total_edges / max_edges, 6) if max_edges > 0 else 0.0
+
+            avg_degree = round(total_edges * 2.0 / total_nodes, 2) if total_nodes > 0 else 0.0
+
+            return {
+                "total_nodes": total_nodes,
+                "total_edges": total_edges,
+                "avg_degree": avg_degree,
+                "node_type_counts": node_type_counts,
+                "relation_type_counts": relation_type_counts,
+                "same_as_edges": same_as_edges,
+                "graph_density": graph_density,
+            }
+
 
 # Singleton
 neo4j_service = Neo4jService()
+

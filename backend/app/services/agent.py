@@ -19,6 +19,7 @@ import logging
 from typing import AsyncGenerator, Optional
 
 from app.config import settings
+from app.schema_profiles import get_active_profile
 from app.models.schemas import ReasoningStep, SubGraph, QueryMode
 from app.services.neo4j_client import neo4j_service
 from app.services.llm_client import llm_client
@@ -32,7 +33,7 @@ AGENT_SYSTEM_PROMPT = """You are a research paper analysis agent. Solve question
 AVAILABLE ACTIONS:
 (1) RetrieveNode[keyword] — Find nodes in the knowledge graph matching the keyword. Use this to discover entities, methods, datasets, concepts mentioned in the papers.
 (2) NodeFeature[node_name, feature] — Get a specific attribute of a node. Use "all" to get all attributes.
-(3) NeighborCheck[node_name, edge_type] — List neighbors connected by the given edge type. Leave edge_type empty for all neighbors. Edge types: USES_METHOD, REPORTS_METRIC, DISCUSSES_CONCEPT, EVALUATED_ON, ACHIEVES, COMPARES_TO, EXTENDS, CITES, ILLUSTRATED_BY, SAME_AS
+(3) NeighborCheck[node_name, edge_type] — List neighbors connected by the given edge type. Leave edge_type empty for all neighbors. Edge types: {edge_types}
 (4) NodeDegree[node_name, edge_type] — Count how many neighbors a node has for a given edge type.
 (5) InspectSection[paper_title, topic_keyword] — Read the text of a specific section in a paper to find detailed explanations, specific benchmark sub-tasks, and exact nuances.
 (6) Finish[answer] — Return your final answer. Include specific facts from your observations.
@@ -67,7 +68,8 @@ You are analyzing a specific set of multiple papers.
 
 async def run_agent(question: str, paper_ids: list[str],
                      mode: QueryMode = QueryMode.SINGLE,
-                     max_steps: int | None = None) -> AsyncGenerator[dict, None]:
+                     max_steps: int | None = None,
+                     config_id: Optional[str] = None) -> AsyncGenerator[dict, None]:
     """Run the ReACT agent loop, yielding SSE events.
     
     Yields dicts with 'event' and 'data' keys:
@@ -82,8 +84,11 @@ async def run_agent(question: str, paper_ids: list[str],
     if max_steps is None:
         max_steps = settings.AGENT_MAX_STEPS
 
-    # Build system prompt
-    system_prompt = AGENT_SYSTEM_PROMPT.format(max_steps=max_steps)
+    # Build system prompt with active profile edge types
+    profile = get_active_profile()
+    edge_types_list = sorted(set(profile.llm_relations + ["REPORTS_METRIC", "ILLUSTRATED_BY", "SAME_AS"]))
+    edge_types_str = ", ".join(edge_types_list)
+    system_prompt = AGENT_SYSTEM_PROMPT.format(max_steps=max_steps, edge_types=edge_types_str)
     if mode == QueryMode.COMPARE:
         system_prompt += MULTI_PAPER_PROMPT_ADDITION
 
@@ -147,7 +152,7 @@ async def run_agent(question: str, paper_ids: list[str],
 
             # Get subgraph of touched nodes
             if all_touched_nodes:
-                subgraph = await neo4j_service.get_subgraph_for_nodes(all_touched_nodes)
+                subgraph = await neo4j_service.get_subgraph_for_nodes(all_touched_nodes, config_id=config_id)
                 yield {"event": "subgraph", "data": {
                     "nodes": [n.model_dump() for n in subgraph.nodes],
                     "edges": [e.model_dump() for e in subgraph.edges],
@@ -161,7 +166,7 @@ async def run_agent(question: str, paper_ids: list[str],
             }}
 
             observation, node_ids = await _execute_action(
-                action_name, action_input, paper_ids
+                action_name, action_input, paper_ids, config_id=config_id
             )
 
             all_touched_nodes.extend(node_ids)
@@ -188,7 +193,7 @@ async def run_agent(question: str, paper_ids: list[str],
                     }}
                     # Retry the action after lazy completion
                     observation, node_ids = await _execute_action(
-                        action_name, action_input, paper_ids
+                        action_name, action_input, paper_ids, config_id=config_id
                     )
                     all_touched_nodes.extend(node_ids)
                     yield {"event": "observation", "data": {
@@ -213,7 +218,7 @@ async def run_agent(question: str, paper_ids: list[str],
     }}
 
     if all_touched_nodes:
-        subgraph = await neo4j_service.get_subgraph_for_nodes(all_touched_nodes)
+        subgraph = await neo4j_service.get_subgraph_for_nodes(all_touched_nodes, config_id=config_id)
         yield {"event": "subgraph", "data": {
             "nodes": [n.model_dump() for n in subgraph.nodes],
             "edges": [e.model_dump() for e in subgraph.edges],
@@ -221,7 +226,8 @@ async def run_agent(question: str, paper_ids: list[str],
 
 
 async def _execute_action(action_name: str, action_input: str,
-                           paper_ids: list[str]) -> tuple[str, list[str]]:
+                           paper_ids: list[str],
+                           config_id: Optional[str] = None) -> tuple[str, list[str]]:
     """Execute an agent action against Neo4j. Returns (observation_text, node_ids)."""
     node_ids = []
     try:
@@ -229,7 +235,7 @@ async def _execute_action(action_name: str, action_input: str,
 
         if name == "retrievenode":
             keyword = action_input.strip()
-            results = await neo4j_service.retrieve_node(keyword, paper_ids or None)
+            results = await neo4j_service.retrieve_node(keyword, paper_ids or None, config_id=config_id)
             if results:
                 node_ids = [r["name"] for r in results if r.get("name")]
                 obs = "Found nodes:\n" + "\n".join(
@@ -244,14 +250,16 @@ async def _execute_action(action_name: str, action_input: str,
             parts = _split_args(action_input)
             node_name = parts[0] if parts else action_input
             feature = parts[1] if len(parts) > 1 else "all"
-            result = await neo4j_service.node_feature(node_name, feature)
+            result = await neo4j_service.node_feature(node_name, feature, config_id=config_id)
             return result, [node_name]
 
         elif name == "neighborcheck":
             parts = _split_args(action_input)
             node_name = parts[0] if parts else action_input
             edge_type = parts[1] if len(parts) > 1 else None
-            neighbors = await neo4j_service.neighbor_check(node_name, edge_type)
+            neighbors = await neo4j_service.neighbor_check(
+                node_name, edge_type, paper_ids=paper_ids or None, config_id=config_id
+            )
             if neighbors:
                 node_ids = [node_name] + [n["name"] for n in neighbors if n.get("name")]
                 obs = f"Neighbors of '{node_name}'" + (f" ({edge_type})" if edge_type else "") + ":\n"
@@ -276,7 +284,9 @@ async def _execute_action(action_name: str, action_input: str,
             parts = _split_args(action_input)
             node_name = parts[0] if parts else action_input
             edge_type = parts[1] if len(parts) > 1 else None
-            degree = await neo4j_service.node_degree(node_name, edge_type)
+            degree = await neo4j_service.node_degree(
+                node_name, edge_type, paper_ids=paper_ids or None, config_id=config_id
+            )
             return f"Node '{node_name}' has {degree} neighbors" + (f" of type '{edge_type}'" if edge_type else "") + ".", [node_name]
 
         else:

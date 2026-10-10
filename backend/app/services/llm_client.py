@@ -11,8 +11,28 @@ import logging
 from typing import AsyncGenerator
 
 from app.config import settings
+from app.schema_profiles import get_active_profile, SchemaProfile, PROFILES
 
 logger = logging.getLogger(__name__)
+
+_RELATION_DESCRIPTIONS: dict[str, str] = {
+    "USES_METHOD": "entity uses a method/technique",
+    "DISCUSSES_CONCEPT": "section discusses a concept",
+    "EVALUATED_ON": "method evaluated on dataset",
+    "ACHIEVES": "method achieves a metric value",
+    "COMPARES_TO": "method compared to another method",
+    "EXTENDS": "method extends another method",
+    "CITES": "paper/work cites another work",
+    "SAME_AS": "two entities represent the same concept/method/dataset",
+}
+
+_ENTITY_DESCRIPTIONS: dict[str, str] = {
+    "Method": "algorithms, models, techniques, architectures",
+    "Dataset": "datasets, benchmarks, corpora",
+    "Metric": "evaluation metrics (accuracy, F1, BLEU, etc.)",
+    "Concept": "theoretical concepts, ideas, phenomena",
+    "Citation": "referenced papers/works",
+}
 
 
 class LLMClient:
@@ -59,31 +79,35 @@ class LLMClient:
             raise
 
     async def extract_triples(self, section_text: str, section_id: str,
-                               paper_id: str, temperature: float = 0.6) -> list[dict]:
+                               paper_id: str, temperature: float = 0.6,
+                               profile: SchemaProfile | str | None = None) -> list[dict]:
         """Extract KG triples from section text.
         
         Returns list of dicts with keys: head, head_type, relation, tail, tail_type
         """
+        prof = (
+            profile if isinstance(profile, SchemaProfile)
+            else PROFILES.get(profile, get_active_profile()) if profile
+            else get_active_profile()
+        )
+        rel_lines = "\n".join(
+            f"- {r}: {_RELATION_DESCRIPTIONS.get(r, 'relationship between entities')}"
+            for r in prof.llm_relations
+        )
+        ent_lines = "\n".join(
+            f"- {e}: {_ENTITY_DESCRIPTIONS.get(e, 'entity mention')}"
+            for e in prof.entity_types
+        )
+
         prompt = f"""You are a knowledge graph extraction expert. Extract factual triples from this research paper section.
 
 Each triple should be: (head_entity, relation_type, tail_entity)
 
 RELATION TYPES (use only these):
-- USES_METHOD: entity uses a method/technique
-- REPORTS_METRIC: entity reports a numerical result
-- DISCUSSES_CONCEPT: section discusses a concept
-- EVALUATED_ON: method evaluated on dataset  
-- ACHIEVES: method achieves a metric value
-- COMPARES_TO: method compared to another method
-- EXTENDS: method extends another method
-- CITES: paper/work cites another work
+{rel_lines}
 
 ENTITY TYPES:
-- Method: algorithms, models, techniques, architectures
-- Dataset: datasets, benchmarks, corpora
-- Metric: evaluation metrics (accuracy, F1, BLEU, etc.)
-- Concept: theoretical concepts, ideas, phenomena
-- Citation: referenced papers/works
+{ent_lines}
 
 RULES:
 - Extract concrete, factual triples only
@@ -118,11 +142,19 @@ Return ONLY the JSON array, no other text:"""
     async def extract_triples_targeted(self, section_text: str,
                                         missing_info: str,
                                         section_id: str,
-                                        paper_id: str) -> list[dict]:
+                                        paper_id: str,
+                                        profile: SchemaProfile | str | None = None) -> list[dict]:
         """Targeted re-extraction for lazy graph completion.
         
         Only extracts triples relevant to the missing information.
         """
+        prof = (
+            profile if isinstance(profile, SchemaProfile)
+            else PROFILES.get(profile, get_active_profile()) if profile
+            else get_active_profile()
+        )
+        rel_str = ", ".join(prof.llm_relations)
+
         prompt = f"""You are a knowledge graph extraction expert. Extract ONLY triples relevant to this specific query from the research paper section.
 
 QUERY: Find information about: {missing_info}
@@ -133,7 +165,7 @@ Section text:
 \"\"\"
 
 Extract triples that help answer the query. Use these relation types:
-USES_METHOD, REPORTS_METRIC, DISCUSSES_CONCEPT, EVALUATED_ON, ACHIEVES, COMPARES_TO, EXTENDS, CITES
+{rel_str}
 
 Return a JSON array of triples:
 [{{"head": "...", "head_type": "...", "relation": "...", "tail": "...", "tail_type": "..."}}]

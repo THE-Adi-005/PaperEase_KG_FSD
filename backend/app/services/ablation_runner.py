@@ -153,64 +153,18 @@ class AblationExperimentResult:
 
 # ── Metrics collection ───────────────────────────────────────────────
 
-async def collect_graph_stats(paper_id: Optional[str] = None) -> GraphStats:
-    """Collect current graph topology statistics."""
-    stats = GraphStats()
-
-    async with neo4j_service.driver.session() as session:
-        # Total nodes
-        if paper_id:
-            result = await session.run("""
-                MATCH (n) WHERE EXISTS {
-                    MATCH ()-[r]->() WHERE r.source_paper_id = $pid
-                } OR EXISTS {
-                    MATCH (n:Paper {id: $pid})
-                }
-                RETURN count(DISTINCT n) as count
-            """, pid=paper_id)
-        else:
-            result = await session.run("MATCH (n) RETURN count(n) as count")
-        stats.total_nodes = (await result.single())["count"]
-
-        # Total edges
-        if paper_id:
-            result = await session.run("""
-                MATCH ()-[r]->() WHERE r.source_paper_id = $pid
-                RETURN count(r) as count
-            """, pid=paper_id)
-        else:
-            result = await session.run("MATCH ()-[r]->() RETURN count(r) as count")
-        stats.total_edges = (await result.single())["count"]
-
-        # Node type counts
-        result = await session.run("""
-            MATCH (n) UNWIND labels(n) as lbl
-            RETURN lbl, count(n) as count ORDER BY count DESC
-        """)
-        async for record in result:
-            stats.node_type_counts[record["lbl"]] = record["count"]
-
-        # Relation type counts
-        result = await session.run("""
-            MATCH ()-[r]->() RETURN type(r) as rel, count(r) as count
-            ORDER BY count DESC
-        """)
-        async for record in result:
-            stats.relation_type_counts[record["rel"]] = record["count"]
-
-        # SAME_AS edges
-        result = await session.run("MATCH ()-[r:SAME_AS]->() RETURN count(r) as count")
-        stats.same_as_edges = (await result.single())["count"]
-
-    # Derived metrics
-    if stats.total_nodes > 1:
-        max_edges = stats.total_nodes * (stats.total_nodes - 1)
-        stats.graph_density = round(stats.total_edges / max_edges, 6) if max_edges > 0 else 0.0
-
-    if stats.total_nodes > 0:
-        stats.avg_degree = round(stats.total_edges * 2.0 / stats.total_nodes, 2)
-
-    return stats
+async def collect_graph_stats(paper_id: Optional[str] = None, config_id: Optional[str] = None) -> GraphStats:
+    """Collect current semantic graph topology statistics."""
+    raw = await neo4j_service.get_semantic_graph_stats(paper_id=paper_id, config_id=config_id)
+    return GraphStats(
+        total_nodes=raw["total_nodes"],
+        total_edges=raw["total_edges"],
+        avg_degree=raw["avg_degree"],
+        node_type_counts=raw["node_type_counts"],
+        relation_type_counts=raw["relation_type_counts"],
+        same_as_edges=raw["same_as_edges"],
+        graph_density=raw["graph_density"],
+    )
 
 
 # ── Experiment runner ─────────────────────────────────────────────────

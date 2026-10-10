@@ -1,43 +1,61 @@
 """Neo4j schema definitions — node labels, relation types, and validation.
 
-The schema is designed to be additive: new relation types can be added
-without breaking existing queries. The seed schema below covers the
-core types from the build spec (Section 4).
+The schema is split into:
+  RELATION_TYPES         — semantic relations (LLM-extractable + SAME_AS)
+  STRUCTURAL_RELATIONS   — relations emitted only by merge_paper / table_parser
+  SEMANTIC_ENTITY_LABELS — entity nodes that carry config_id and norm_name
+  GRAPH_STATS_EXCLUDE_RELATIONS — excluded from the semantic graph_stats helper
+
+Dead entries removed (declared but never emitted by any code path):
+  PART_OF, BELONGS_TO, REFERENCES_FIGURE, REFERENCES_TABLE
 """
+
+# ── Semantic entity labels (carry config_id + norm_name) ─────────────
+SEMANTIC_ENTITY_LABELS: list[str] = [
+    "Concept",
+    "Method",
+    "Dataset",
+    "Metric",
+    "Citation",
+]
 
 # ── Node Labels ──────────────────────────────────────────────────────
 NODE_LABELS: list[str] = [
     "Paper",
     "Author",
     "Section",
-    "Concept",
-    "Method",
-    "Dataset",
-    "Metric",
     "Figure",
     "Table",
-    "Citation",
+] + SEMANTIC_ENTITY_LABELS
+
+# ── Semantic Relationship Types ───────────────────────────────────────
+# REPORTS_METRIC is emitted only by table_to_triples (not the LLM prompt).
+# SAME_AS is emitted only by the embedding service.
+RELATION_TYPES: list[str] = [
+    "DISCUSSES_CONCEPT",  # Section/Paper → Concept
+    "USES_METHOD",        # Paper/Section/Concept → Method
+    "REPORTS_METRIC",     # Method/Table → Metric  (table_to_triples only)
+    "ILLUSTRATED_BY",     # Section → Figure | Table
+    "CITES",              # Paper → Citation
+    "SAME_AS",            # Concept/Method/Dataset ↔ Concept/Method/Dataset (embeddings)
+    "EVALUATED_ON",       # Method → Dataset
+    "ACHIEVES",           # Method → Metric (with value)
+    "COMPARES_TO",        # Method → Method
+    "EXTENDS",            # Method → Method
 ]
 
-# ── Relationship Types (seed schema) ────────────────────────────────
-RELATION_TYPES: list[str] = [
-    "AUTHORED_BY",        # Paper -> Author
-    "CONTAINS_SECTION",   # Paper -> Section
-    "DISCUSSES_CONCEPT",  # Section -> Concept
-    "USES_METHOD",        # Paper/Section -> Method
-    "REPORTS_METRIC",     # Method/Table -> Metric (value property)
-    "ILLUSTRATED_BY",     # Section -> Figure | Table
-    "CITES",              # Paper -> Citation
-    "SAME_AS",            # Concept -> Concept (cross-paper, embedding)
-    "EVALUATED_ON",       # Method -> Dataset
-    "PART_OF",            # Section -> Paper (inverse convenience)
-    "REFERENCES_FIGURE",  # Section -> Figure
-    "REFERENCES_TABLE",   # Section -> Table
-    "ACHIEVES",           # Method -> Metric (with value)
-    "COMPARES_TO",        # Method -> Method
-    "EXTENDS",            # Method -> Method
-    "BELONGS_TO",         # Author -> Paper (inverse convenience)
-]
+# ── Structural Relations (emitted by merge_paper, never by LLM) ───────
+STRUCTURAL_RELATIONS: set[str] = {
+    "AUTHORED_BY",
+    "CONTAINS_SECTION",
+    "CONTAINS_FIGURE",
+    "CONTAINS_TABLE",
+}
+
+# Relations excluded from semantic graph_stats counts
+GRAPH_STATS_EXCLUDE_RELATIONS: set[str] = STRUCTURAL_RELATIONS | {
+    "ILLUSTRATED_BY",
+}
 
 # Keep a mutable set for dynamically discovered relation types
 _dynamic_relations: set[str] = set()
@@ -66,12 +84,15 @@ def get_all_relations() -> list[str]:
 
 # ── Neo4j constraint & index setup queries ──────────────────────────
 SETUP_QUERIES: list[str] = [
-    # Uniqueness constraints
+    # Structural-node uniqueness constraints
     "CREATE CONSTRAINT paper_id IF NOT EXISTS FOR (p:Paper) REQUIRE p.id IS UNIQUE",
     "CREATE CONSTRAINT author_id IF NOT EXISTS FOR (a:Author) REQUIRE a.id IS UNIQUE",
     "CREATE CONSTRAINT section_id IF NOT EXISTS FOR (s:Section) REQUIRE s.id IS UNIQUE",
     "CREATE CONSTRAINT figure_id IF NOT EXISTS FOR (f:Figure) REQUIRE f.id IS UNIQUE",
     "CREATE CONSTRAINT table_id IF NOT EXISTS FOR (t:Table) REQUIRE t.id IS UNIQUE",
+
+    # Composite lookup index for semantic entity nodes (norm_name + config_id)
+    "CREATE INDEX entity_norm_config IF NOT EXISTS FOR (n:Entity) ON (n.norm_name, n.config_id)",
 
     # Full-text indexes for entity search (used by RetrieveNode agent tool)
     """CREATE FULLTEXT INDEX entity_name_index IF NOT EXISTS

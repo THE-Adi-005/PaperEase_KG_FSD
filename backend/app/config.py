@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     SAME_AS_THRESHOLD: float = 0.85
     SECTION_TEXT_LIMIT: int = 3000  # Max chars per section for extraction
 
+    # Schema profile & ablation knobs
+    SCHEMA_PROFILE: str = "S8"          # Active profile: S3 | S5 | S8 | S12
+    MAX_TRIPLES_PER_SECTION: int = 0    # 0 = uncapped; positive N caps triples per section
+    VOTE_FRACTION: float = 0.5          # pass if count >= ceil(N * VOTE_FRACTION)
+    ENFORCE_TYPE_SIGNATURES: bool = False  # Reject triples violating head/tail type constraints
+    ALLOW_DYNAMIC_RELATIONS: bool = True   # Accept LLM relations not in active profile
+
     # Multi-agent pipeline config
     MULTI_AGENT_ENABLED: bool = True
     VERIFIER_CONFIDENCE_THRESHOLD: float = 0.6  # Below this → revision loop
