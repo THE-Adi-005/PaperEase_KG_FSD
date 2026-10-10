@@ -21,13 +21,18 @@ from app.models.neo4j_schema import (
     register_dynamic_relation,
     RELATION_TYPES,
 )
-from app.schema_profiles import get_active_profile, SchemaProfile
+from app.schema_profiles import get_active_profile, SchemaProfile, ENTITY_TYPES
 from app.services.llm_client import llm_client
 from app.services.neo4j_client import neo4j_service
 from app.utils.table_parser import table_to_triples
 from app.triple_filters import min_votes
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_type(entity_type: str) -> str:
+    """Ensure entity type is in ENTITY_TYPES whitelist, defaulting to Concept."""
+    return entity_type if entity_type in ENTITY_TYPES else "Concept"
 
 
 def _is_triple_valid(
@@ -37,16 +42,20 @@ def _is_triple_valid(
     profile: SchemaProfile,
 ) -> bool:
     """Validate a triple against dynamic relation policy and type signatures."""
-    # Dynamic relation check
+    # Dynamic relation check: reject if not in profile.llm_relations
     if not settings.ALLOW_DYNAMIC_RELATIONS:
-        if relation not in profile.llm_relations and relation not in RELATION_TYPES:
+        if relation not in profile.llm_relations:
             return False
+
+    # Sanitize types before signature check
+    h_type = sanitize_type(head_type)
+    t_type = sanitize_type(tail_type)
 
     # Type signature check
     if settings.ENFORCE_TYPE_SIGNATURES:
         valid_sigs = profile.type_signatures.get(relation)
         if valid_sigs is not None:
-            if (head_type, tail_type) not in valid_sigs:
+            if (h_type, t_type) not in valid_sigs:
                 return False
 
     return True
@@ -211,8 +220,8 @@ def _self_consistency_filter(all_runs: list[list[dict]],
         if count >= threshold:
             raw = triple_map[key]
             relation = normalize_relation(raw.get("relation", ""))
-            head_type = raw.get("head_type", "Concept")
-            tail_type = raw.get("tail_type", "Concept")
+            head_type = sanitize_type(raw.get("head_type", "Concept"))
+            tail_type = sanitize_type(raw.get("tail_type", "Concept"))
 
             if not _is_triple_valid(relation, head_type, tail_type, profile):
                 continue
@@ -246,8 +255,8 @@ def _dicts_to_triples(raw_list: list[dict], paper_id: str,
         head = t.get("head", "").strip()
         tail = t.get("tail", "").strip()
         relation = normalize_relation(t.get("relation", ""))
-        head_type = t.get("head_type", "Concept")
-        tail_type = t.get("tail_type", "Concept")
+        head_type = sanitize_type(t.get("head_type", "Concept"))
+        tail_type = sanitize_type(t.get("tail_type", "Concept"))
 
         if not head or not tail or not relation:
             continue
