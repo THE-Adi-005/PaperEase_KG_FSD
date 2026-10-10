@@ -84,7 +84,8 @@ class LLMClient:
     async def extract_triples(self, section_text: str, section_id: str,
                                paper_id: str, temperature: float = 0.6,
                                profile: SchemaProfile | str | None = None,
-                               trunc: int | None = None) -> list[dict]:
+                               trunc: int | None = None,
+                               raise_on_error: bool = False) -> list[dict]:
         """Extract KG triples from section text.
         
         Returns list of dicts with keys: head, head_type, relation, tail, tail_type
@@ -144,6 +145,8 @@ Return ONLY the JSON array, no other text:"""
             return triples
         except Exception as e:
             logger.warning(f"Triple extraction failed for section {section_id}: {e}")
+            if raise_on_error:
+                raise
             return []
 
     async def extract_triples_targeted(self, section_text: str,
@@ -191,6 +194,14 @@ Return ONLY the JSON array:"""
         """Extract JSON array from LLM response text."""
         # Try direct parse
         text = text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+
         try:
             result = json.loads(text)
             if isinstance(result, list):
@@ -218,7 +229,10 @@ Return ONLY the JSON array:"""
             except json.JSONDecodeError:
                 continue
 
-        return objects
+        if objects:
+            return objects
+
+        raise ValueError(f"No valid JSON array or objects found in LLM response: {text[:120]}")
 
 
 # Singleton

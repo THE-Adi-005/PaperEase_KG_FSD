@@ -123,6 +123,7 @@ async def main():
                     temperature=args.temp,
                     profile=args.profile,
                     trunc=args.trunc,
+                    raise_on_error=True,
                 )
                 put_run(
                     paper_id=p_id,

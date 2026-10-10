@@ -42,3 +42,25 @@ def test_table_triples_cache(tmp_db):
     assert triples[0]["head"] == "BERT"
     assert triples[0]["relation"] == "EVALUATED_ON"
     assert triples[0]["tail"] == "GLUE"
+
+
+def test_parse_json_array():
+    from app.services.llm_client import llm_client
+
+    # Valid empty list
+    assert llm_client._parse_json_array("[]") == []
+    assert llm_client._parse_json_array("```json\n[]\n```") == []
+    assert llm_client._parse_json_array("Here are the triples: []") == []
+
+    # Valid non-empty list
+    parsed = llm_client._parse_json_array('[{"head": "BERT", "relation": "ACHIEVES", "tail": "F1=92.4"}]')
+    assert len(parsed) == 1
+    assert parsed[0]["head"] == "BERT"
+
+    # Unparseable output raises ValueError
+    with pytest.raises(ValueError, match="No valid JSON array or objects found"):
+        llm_client._parse_json_array("This section describes the dataset but contains no triples.")
+
+    with pytest.raises(ValueError, match="No valid JSON array or objects found"):
+        llm_client._parse_json_array("")
+
