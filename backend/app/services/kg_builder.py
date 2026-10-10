@@ -25,6 +25,7 @@ from app.schema_profiles import get_active_profile, SchemaProfile
 from app.services.llm_client import llm_client
 from app.services.neo4j_client import neo4j_service
 from app.utils.table_parser import table_to_triples
+from app.triple_filters import min_votes
 
 logger = logging.getLogger(__name__)
 
@@ -200,9 +201,9 @@ def _self_consistency_filter(all_runs: list[list[dict]],
                 triple_counts[key] += 1
                 triple_map[key] = t  # Keep the last raw dict
 
-    # Pass threshold: count >= ceil(VOTE_FRACTION * N)
+    # Pass threshold: count >= min_votes(N, VOTE_FRACTION)
     n = num_runs if num_runs is not None else len(all_runs)
-    threshold = math.ceil(settings.VOTE_FRACTION * n)
+    threshold = min_votes(n, settings.VOTE_FRACTION)
     majority_triples = []
 
     profile = get_active_profile()
