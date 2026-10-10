@@ -83,7 +83,8 @@ class LLMClient:
 
     async def extract_triples(self, section_text: str, section_id: str,
                                paper_id: str, temperature: float = 0.6,
-                               profile: SchemaProfile | str | None = None) -> list[dict]:
+                               profile: SchemaProfile | str | None = None,
+                               trunc: int | None = None) -> list[dict]:
         """Extract KG triples from section text.
         
         Returns list of dicts with keys: head, head_type, relation, tail, tail_type
@@ -101,6 +102,9 @@ class LLMClient:
             f"- {e}: {_ENTITY_DESCRIPTIONS.get(e, 'entity mention')}"
             for e in prof.entity_types
         )
+
+        limit = trunc if trunc is not None else settings.SECTION_TEXT_LIMIT
+        text_slice = section_text[:limit] if limit > 0 else section_text
 
         prompt = f"""You are a knowledge graph extraction expert. Extract factual triples from this research paper section.
 
@@ -120,7 +124,7 @@ RULES:
 
 Section text:
 \"\"\"
-{section_text[:settings.SECTION_TEXT_LIMIT]}
+{text_slice}
 \"\"\"
 
 Return a JSON array. Example:

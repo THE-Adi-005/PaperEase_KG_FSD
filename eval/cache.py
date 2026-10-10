@@ -13,7 +13,7 @@ DEFAULT_DB_PATH = PROJECT_ROOT / "results" / "cache.sqlite"
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     target_path = Path(db_path) if db_path is not None else DEFAULT_DB_PATH
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(target_path))
+    conn = sqlite3.connect(str(target_path), timeout=60.0)
     init_db(conn)
     return conn
 
