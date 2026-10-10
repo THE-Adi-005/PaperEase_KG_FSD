@@ -151,6 +151,30 @@ def put_table_triple(
         )
 
 
+def put_table_triples(
+    triples: list[dict | tuple],
+    db_path: Path | str | None = None,
+) -> int:
+    if not triples:
+        return 0
+    records = []
+    for t in triples:
+        if isinstance(t, dict):
+            records.append((t["paper_id"], t.get("section_id", ""), t["head"], t["relation"], t["tail"]))
+        else:
+            records.append(t)
+    with get_connection(db_path) as conn:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO table_triples (
+                paper_id, section_id, head, relation, tail
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+    return len(records)
+
+
 def get_table_triples(
     paper_id: str | None = None,
     section_id: str | None = None,
