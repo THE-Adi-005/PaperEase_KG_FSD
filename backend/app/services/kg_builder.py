@@ -22,11 +22,21 @@ from app.utils.table_parser import table_to_triples
 logger = logging.getLogger(__name__)
 
 
-async def build_kg(paper: ParsedPaper) -> AsyncGenerator[dict, None]:
+async def build_kg(paper: ParsedPaper,
+                   extraction_runs: int | None = None,
+                   extraction_temp: float | None = None,
+                   text_limit: int | None = None,
+                   relation_subset: list[str] | None = None) -> AsyncGenerator[dict, None]:
     """Build knowledge graph from a parsed paper.
+    
+    Optional overrides allow ablation experiments to vary parameters
+    without changing global settings.
     
     Yields progress events: {section_idx, total, status, triples_count}
     """
+    # Use overrides or fall back to global settings
+    num_runs = extraction_runs if extraction_runs is not None else settings.EXTRACTION_RUNS
+    temp = extraction_temp if extraction_temp is not None else settings.EXTRACTION_TEMPERATURE
     total_sections = len(paper.sections)
     total_triples = 0
 
@@ -44,14 +54,13 @@ async def build_kg(paper: ParsedPaper) -> AsyncGenerator[dict, None]:
 
         # ── Self-consistency extraction ──
         all_runs_triples = []
-        num_runs = settings.EXTRACTION_RUNS
 
         for run_idx in range(num_runs):
             raw_triples = await llm_client.extract_triples(
                 section_text=section.text,
                 section_id=section.id,
                 paper_id=paper.id,
-                temperature=settings.EXTRACTION_TEMPERATURE,
+                temperature=temp,
             )
             all_runs_triples.append(raw_triples)
 

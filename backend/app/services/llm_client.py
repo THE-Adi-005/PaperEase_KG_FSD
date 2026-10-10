@@ -20,10 +20,10 @@ class LLMClient:
 
     def __init__(self):
         self.client = AsyncOpenAI(
-            base_url=settings.OLLAMA_BASE_URL,
-            api_key="ollama",  # Ollama doesn't need a real key
+            base_url=settings.LLM_BASE_URL,
+            api_key=settings.LLM_API_KEY,  
         )
-        self.model = settings.OLLAMA_MODEL
+        self.model = settings.LLM_MODEL
 
     async def generate(self, messages: list[dict], temperature: float = 0.1,
                        max_tokens: int = 2048) -> str:
@@ -93,7 +93,7 @@ RULES:
 
 Section text:
 \"\"\"
-{section_text[:3000]}
+{section_text[:settings.SECTION_TEXT_LIMIT]}
 \"\"\"
 
 Return a JSON array. Example:
@@ -129,7 +129,7 @@ QUERY: Find information about: {missing_info}
 
 Section text:
 \"\"\"
-{section_text[:3000]}
+{section_text[:settings.SECTION_TEXT_LIMIT]}
 \"\"\"
 
 Extract triples that help answer the query. Use these relation types:

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
-import { Brain } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Share2 } from 'lucide-react';
 import { checkHealth } from '../utils/api';
 
-export default function Header() {
+export default function Header({ isDemoMode, setIsDemoMode }) {
   const [health, setHealth] = useState(null);
 
   useEffect(() => {
@@ -16,14 +16,22 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="header">
-      <div className="header-logo">
+    <header className="app-header">
+      <div className="header-brand">
         <div className="logo-icon">
-          <Brain size={16} />
+          <Share2 size={20} />
         </div>
         <h1>KG Paper Assistant</h1>
       </div>
+      
       <div className="header-status">
+        <button 
+          className={`action-btn ${isDemoMode ? 'primary' : 'outline'}`}
+          onClick={() => setIsDemoMode(!isDemoMode)}
+          style={{ marginRight: 16 }}
+        >
+          {isDemoMode ? 'Exit Demo' : '🎯 Demo Mode'}
+        </button>
         <div className="status-dot">
           <div className={`dot ${health?.neo4j ? 'active' : ''}`} />
           Neo4j

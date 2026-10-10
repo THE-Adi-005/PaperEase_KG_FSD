@@ -16,7 +16,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.models.schemas import ParsedPaper, Author, Section, FigureData, TableData
-from app.utils.tei_parser import parse_tei_xml
+from app.utils.unstructured_parser import parse_unstructured
 from app.utils.table_parser import extract_tables_from_pdf
 
 logger = logging.getLogger(__name__)
@@ -41,40 +41,25 @@ async def parse_pdf(file_path: str, paper_id: str | None = None) -> ParsedPaper:
 
     logger.info(f"Parsing PDF: {path.name} (id={paper_id})")
 
-    # ── Step 1: GROBID TEI-XML ──
-    tei_result = await _call_grobid(file_path)
-    parsed = parse_tei_xml(tei_result, paper_id)
+    # ── Step 1: Unstructured Parsing ──
+    parsed = parse_unstructured(file_path, paper_id)
 
     # ── Step 2: Extract figure images with PyMuPDF ──
     figure_images = _extract_images(file_path, paper_id)
-
-    # Match GROBID-detected figures with extracted images
-    for fig in parsed["figures"]:
-        # Try to match by page number or order
-        if figure_images:
-            img_data = figure_images.pop(0)
-            fig.image_path = img_data["path"]
-            fig.page_number = img_data["page"]
+    extracted_figures = []
+    for idx, img in enumerate(figure_images):
+        extracted_figures.append(FigureData(
+            id=f"{paper_id}_fig_{idx+1}",
+            label=f"Figure {idx+1}",
+            caption=f"Visual asset extracted from Page {img.get('page', 1)}",
+            image_path=img.get("path", ""),
+            page_number=img.get("page", 1),
+        ))
+    all_figures = parsed["figures"] + extracted_figures
 
     # ── Step 3: Extract table structure with pdfplumber ──
     pdfplumber_tables = extract_tables_from_pdf(file_path, paper_id)
-
-    # Merge pdfplumber data into GROBID-detected tables
-    grobid_tables = parsed["tables"]
-    # If pdfplumber found more tables, add them
-    all_tables = grobid_tables.copy()
-    for pt in pdfplumber_tables:
-        # Check if already covered by GROBID
-        matched = False
-        for gt in grobid_tables:
-            if gt.page_number and pt.page_number and gt.page_number == pt.page_number:
-                # Merge pdfplumber structure into GROBID metadata
-                gt.headers = pt.headers
-                gt.rows = pt.rows
-                matched = True
-                break
-        if not matched:
-            all_tables.append(pt)
+    all_tables = parsed["tables"] + pdfplumber_tables
 
     # ── Build ParsedPaper ──
     paper = ParsedPaper(
@@ -83,10 +68,10 @@ async def parse_pdf(file_path: str, paper_id: str | None = None) -> ParsedPaper:
         abstract=parsed["abstract"],
         authors=parsed["authors"],
         sections=parsed["sections"],
-        figures=parsed["figures"],
+        figures=all_figures,
         tables=all_tables,
         references=parsed["references"],
-        raw_tei_xml=tei_result[:10000] if tei_result else None,  # Keep truncated for debug
+        raw_tei_xml=None,
     )
 
     logger.info(
@@ -96,37 +81,6 @@ async def parse_pdf(file_path: str, paper_id: str | None = None) -> ParsedPaper:
     )
 
     return paper
-
-
-async def _call_grobid(file_path: str) -> str:
-    """Send PDF to GROBID and get TEI-XML response."""
-    url = f"{settings.GROBID_URL}/api/processFulltextDocument"
-
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            with open(file_path, "rb") as f:
-                response = await client.post(
-                    url,
-                    files={"input": (Path(file_path).name, f, "application/pdf")},
-                    data={
-                        "consolidateHeader": "1",
-                        "consolidateCitations": "0",
-                        "includeRawCitations": "0",
-                        "includeRawAffiliations": "0",
-                        "teiCoordinates": "figure,ref",
-                    },
-                )
-                if response.status_code == 200:
-                    return response.text
-                else:
-                    logger.error(f"GROBID error {response.status_code}: {response.text[:500]}")
-                    return ""
-    except httpx.ConnectError:
-        logger.error("Cannot connect to GROBID. Is it running?")
-        return ""
-    except Exception as e:
-        logger.error(f"GROBID call failed: {e}")
-        return ""
 
 
 def _extract_images(pdf_path: str, paper_id: str) -> list[dict]:

@@ -1,4 +1,5 @@
 # KG Paper Assistant
+
 ## Knowledge-Graph-Grounded Research Paper QA System
 
 A full-stack application that builds knowledge graphs from research papers and answers questions using KG-grounded reasoning with full traceability.
@@ -21,67 +22,24 @@ A full-stack application that builds knowledge graphs from research papers and a
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   React UI   │────▶│   FastAPI    │────▶│   Ollama     │
-│  (Vite)      │ SSE │   Backend    │ API │  qwen2.5:7b  │
-│  Port 5173   │◀────│   Port 8000  │◀────│  Port 11434  │
+│   React UI   │────▶│   FastAPI    │────▶│ LLM Provider │
+│  (Vite)      │ SSE │   Backend    │ API │ (Groq/Ollama)│
+│  Port 5173   │◀────│   Port 8000  │◀────│              │
 └──────────────┘     └──────┬───────┘     └──────────────┘
-                           │
-                    ┌──────┼───────┐
-                    ▼      ▼       ▼
-              ┌─────────┐ ┌──────┐ ┌──────────┐
-              │  Neo4j  │ │GROBID│ │MiniLM-L6 │
-              │  7687   │ │ 8070 │ │  (CPU)   │
-              └─────────┘ └──────┘ └──────────┘
+                            │
+                     ┌──────┼───────┐
+                     ▼      ▼       ▼
+               ┌─────────┐ ┌────────┐ ┌──────────┐
+               │  Neo4j  │ │ Python │ │MiniLM-L6 │
+               │  7687   │ │ Parser │ │  (CPU)   │
+               └─────────┘ └────────┘ └──────────┘
 ```
 
-## Prerequisites
+## Setup & Execution
+Please see [HOW_TO_RUN_AND_EXECUTE.md](HOW_TO_RUN_AND_EXECUTE.md) for detailed, step-by-step instructions on setting up the environment, installing dependencies, and running the application.
 
-1. **Docker Desktop** (for Neo4j + GROBID)
-   - Requires WSL2 on Windows: `wsl --install` (admin PowerShell, then reboot)
-   - Download: https://www.docker.com/products/docker-desktop/
-
-2. **Ollama** (for LLM inference)
-   - Download: https://ollama.com/download
-   - After install: `ollama pull qwen2.5:7b`
-
-3. **Python 3.11+** and **Node.js 18+**
-
-## Quick Start
-
-```bash
-# 1. Start Neo4j + GROBID
-docker-compose up -d
-
-# 2. Start Ollama (separate terminal or on Machine A)
-ollama serve
-# In another terminal: ollama pull qwen2.5:7b
-
-# 3. Backend
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-
-# 4. Frontend
-cd frontend
-npm install
-npm run dev
-
-# 5. Open http://localhost:5173
-```
-
-## Environment Configuration
-
-Copy `.env.example` to `.env` and adjust:
-```env
-# For split setup (LLM on Machine A):
-OLLAMA_BASE_URL=http://<machine-a-ip>:11434/v1
-```
-
-## Evaluation
-
-```bash
-python eval/evaluate.py --qa_file eval/qa_sets/grounding_paper.json
-```
+## Detailed Description
+Please see [PROJECT_DESCRIPTION.md](PROJECT_DESCRIPTION.md) for a comprehensive overview of the architecture, workflow, and concepts used in this project.
 
 ## Project Structure
 
@@ -91,16 +49,13 @@ python eval/evaluate.py --qa_file eval/qa_sets/grounding_paper.json
 │   │   ├── main.py           # App entry
 │   │   ├── config.py         # Settings
 │   │   ├── routers/          # API endpoints
-│   │   ├── services/         # Core logic
-│   │   │   ├── agent.py      # ReACT reasoning
-│   │   │   ├── kg_builder.py # KG construction
-│   │   │   └── lazy_completion.py  # Novel contribution
+│   │   ├── services/         # Core logic (Agent, LLM client, Neo4j)
 │   │   ├── models/           # Pydantic + Neo4j schema
-│   │   └── utils/            # TEI + table parsers
+│   │   └── utils/            # Unstructured PDF & table parsers
 ├── frontend/          # React + Vite
 │   └── src/
 │       ├── components/       # UI components
 │       └── hooks/            # SSE streaming
 ├── eval/              # Evaluation pipeline
-└── docker-compose.yml # Infrastructure
+└── HOW_TO_RUN_AND_EXECUTE.md # Run instructions
 ```

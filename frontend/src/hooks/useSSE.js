@@ -8,6 +8,7 @@ export function useSSE() {
   const [steps, setSteps] = useState([]);
   const [answer, setAnswer] = useState(null);
   const [subgraph, setSubgraph] = useState(null);
+  const [trace, setTrace] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
@@ -17,6 +18,7 @@ export function useSSE() {
     setSteps([]);
     setAnswer(null);
     setSubgraph(null);
+    setTrace(null);
     setError(null);
     setIsStreaming(true);
 
@@ -70,14 +72,29 @@ export function useSSE() {
       case 'thought':
         setSteps(prev => [...prev, { type: 'thought', ...data }]);
         break;
+      case 'planning':
+        setSteps(prev => [...prev, { type: 'planning', ...data }]);
+        break;
       case 'action':
         setSteps(prev => [...prev, { type: 'action', ...data }]);
         break;
       case 'observation':
         setSteps(prev => [...prev, { type: 'observation', ...data }]);
         break;
+      case 'reasoning':
+        setSteps(prev => [...prev, { type: 'reasoning', ...data }]);
+        break;
+      case 'verifying':
+        setSteps(prev => [...prev, { type: 'verifying', ...data }]);
+        break;
+      case 'revision':
+        setSteps(prev => [...prev, { type: 'revision', ...data }]);
+        break;
       case 'lazy_completion':
         setSteps(prev => [...prev, { type: 'lazy', ...data }]);
+        break;
+      case 'trace':
+        setTrace(data);
         break;
       case 'answer':
         setAnswer(data);
@@ -99,9 +116,10 @@ export function useSSE() {
     setSteps([]);
     setAnswer(null);
     setSubgraph(null);
+    setTrace(null);
     setError(null);
     setIsStreaming(false);
   }, []);
 
-  return { steps, answer, subgraph, isStreaming, error, startQuery, reset };
+  return { steps, answer, subgraph, trace, isStreaming, error, startQuery, reset };
 }

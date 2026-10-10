@@ -127,6 +127,47 @@ async def get_paper_tables(paper_id: str):
     return await neo4j_service.get_paper_tables(paper_id)
 
 
+@router.get("/paper/{paper_id}/triples")
+async def get_paper_triples(paper_id: str):
+    """Get all extracted triples (nodes and relationships) specifically sourced from a single paper."""
+    async with neo4j_service.driver.session() as session:
+        result = await session.run(
+            """MATCH (h)-[r]->(t)
+               WHERE r.source_paper_id = $paper_id
+               RETURN coalesce(h.name, h.title, h.label, h.id) AS head, 
+                      labels(h)[0] AS head_type, 
+                      type(r) AS relation, 
+                      coalesce(t.name, t.title, t.label, t.id) AS tail, 
+                      labels(t)[0] AS tail_type,
+                      r.source_section_id AS section_id
+               ORDER BY CASE WHEN type(r) IN ['AUTHORED_BY', 'CONTAINS_SECTION', 'CONTAINS_FIGURE', 'CONTAINS_TABLE'] THEN 1 ELSE 0 END, head
+               LIMIT 500""",
+            paper_id=paper_id
+        )
+        
+        triples = []
+        async for record in result:
+            rel_type = record["relation"]
+            head_type = record["head_type"]
+            tail_type = record["tail_type"]
+            is_structural = (
+                rel_type in ['AUTHORED_BY', 'CONTAINS_SECTION', 'CONTAINS_FIGURE', 'CONTAINS_TABLE', 'ILLUSTRATED_BY']
+                or head_type in ['Paper', 'Section']
+                or tail_type in ['Section', 'Author']
+            )
+            triples.append({
+                "head": record["head"] or "Unknown Node",
+                "head_type": head_type or "Unknown",
+                "relation": rel_type,
+                "tail": record["tail"] or "Unknown Node",
+                "tail_type": tail_type or "Unknown",
+                "section_id": record["section_id"],
+                "category": "structural" if is_structural else "domain"
+            })
+        
+        return {"paper_id": paper_id, "triples": triples}
+
+
 # ── Background ingestion task ────────────────────────────────────────
 
 async def _ingest_paper(file_path: str, paper_id: str):

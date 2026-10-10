@@ -25,35 +25,32 @@ async def health_check():
         logger.warning(f"Neo4j health check failed: {e}")
         status.neo4j = False
 
-    # ── Ollama ──
+    # ── LLM ──
     try:
-        # Use the base Ollama URL (not /v1) for model listing
-        ollama_base = settings.OLLAMA_BASE_URL.replace("/v1", "")
+        # Generic models endpoint for OpenAI-compatible APIs (Ollama, Groq, etc)
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{ollama_base}/api/tags")
+            headers = {"Authorization": f"Bearer {settings.LLM_API_KEY}"}
+            resp = await client.get(f"{settings.LLM_BASE_URL}/models", headers=headers)
             if resp.status_code == 200:
-                status.ollama = True
-                models = resp.json().get("models", [])
-                model_names = [m.get("name", "") for m in models]
-                status.ollama_model = (
-                    settings.OLLAMA_MODEL
-                    if any(settings.OLLAMA_MODEL in n for n in model_names)
-                    else f"model '{settings.OLLAMA_MODEL}' not found; available: {model_names}"
+                status.llm = True
+                models = resp.json().get("data", [])
+                model_names = [m.get("id", "") for m in models]
+                
+                # Ollama often returns 'models' object in /api/tags, but OpenAI standard is /v1/models with 'data'
+                if not models and "models" in resp.json():
+                    models = resp.json().get("models", [])
+                    model_names = [m.get("name", "") for m in models]
+                    
+                status.llm_model = (
+                    settings.LLM_MODEL
+                    if any(settings.LLM_MODEL in n for n in model_names)
+                    else f"model '{settings.LLM_MODEL}' not found; available: {model_names}"
                 )
     except Exception as e:
-        logger.warning(f"Ollama health check failed: {e}")
-        status.ollama = False
-
-    # ── GROBID ──
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{settings.GROBID_URL}/api/isalive")
-            status.grobid = resp.status_code == 200
-    except Exception as e:
-        logger.warning(f"GROBID health check failed: {e}")
-        status.grobid = False
+        logger.warning(f"LLM health check failed: {e}")
+        status.llm = False
 
     # Overall status
-    status.status = "ok" if all([status.neo4j, status.ollama, status.grobid]) else "degraded"
+    status.status = "ok" if all([status.neo4j, status.llm]) else "degraded"
 
     return status

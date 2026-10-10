@@ -34,7 +34,8 @@ AVAILABLE ACTIONS:
 (2) NodeFeature[node_name, feature] — Get a specific attribute of a node. Use "all" to get all attributes.
 (3) NeighborCheck[node_name, edge_type] — List neighbors connected by the given edge type. Leave edge_type empty for all neighbors. Edge types: USES_METHOD, REPORTS_METRIC, DISCUSSES_CONCEPT, EVALUATED_ON, ACHIEVES, COMPARES_TO, EXTENDS, CITES, ILLUSTRATED_BY, SAME_AS
 (4) NodeDegree[node_name, edge_type] — Count how many neighbors a node has for a given edge type.
-(5) Finish[answer] — Return your final answer. Include specific facts from your observations.
+(5) InspectSection[paper_title, topic_keyword] — Read the text of a specific section in a paper to find detailed explanations, specific benchmark sub-tasks, and exact nuances.
+(6) Finish[answer] — Return your final answer. Include specific facts from your observations.
 
 RULES:
 - Always start with a Thought explaining your reasoning
@@ -43,6 +44,8 @@ RULES:
 - When you have enough information, use Finish[your answer here]
 - Provide node names (not IDs) in your answers
 - Cite specific facts from the graph (e.g., "Method X achieves F1=0.85")
+- CRITICAL: When quoting metrics, numbers, or scores from an Observation, you MUST copy them EXACTLY character-for-character. Do not round, modify, or hallucinate numbers under any circumstances.
+- PROVENANCE RULE: Always check the `source_paper` field in NeighborCheck observations. Never attribute a dataset or metric from Paper A to Paper B.
 - If a search returns no results, try rephrasing or different keywords
 
 FORMAT:
@@ -52,12 +55,13 @@ Action: <ActionName>[<argument1>, <argument2>]
 You may take up to {max_steps} steps."""
 
 MULTI_PAPER_PROMPT_ADDITION = """
-MULTI-PAPER MODE:
-You are comparing information across multiple papers. When answering:
-- Clearly attribute each claim to its source paper
-- Use phrases like "According to Paper A, ..." and "Paper B reports..."
-- Highlight similarities and differences
-- Follow SAME_AS edges to find equivalent concepts across papers
+MULTI-PAPER VERIFICATION RULES:
+You are analyzing a specific set of multiple papers.
+1. COMPLETENESS CHECKLIST: Before calling Finish, you MUST evaluate EACH paper in the selected list. Explicitly state whether each paper uses the queried architecture/concept, and list its specific datasets/metrics.
+2. ZERO MISATTRIBUTION: Pay strict attention to the `source_paper` in observations. Do NOT confuse datasets across papers.
+3. STRUCTURED SYNTHESIS: In your Finish answer, organize the response clearly per paper:
+   - For papers that DO use the queried method: state how they use it, their evaluation datasets, and key scores.
+   - For papers that DO NOT use the queried method: explicitly confirm they do not use it (and briefly note what they do instead).
 """
 
 
@@ -88,9 +92,24 @@ async def run_agent(question: str, paper_ids: list[str],
     reasoning_steps = []
     lazy_completion_count = 0
 
+    # Look up paper titles so the agent knows what papers it's working with
+    paper_context = ""
+    try:
+        paper_titles = []
+        for pid in paper_ids:
+            info = await neo4j_service.get_paper_info(pid)
+            if info and info.title:
+                paper_titles.append(info.title)
+        if paper_titles:
+            paper_context = "\n\nYou are analyzing these papers:\n" + "\n".join(
+                f"  - {title}" for title in paper_titles
+            ) + "\n\nUse specific keywords from the paper titles (e.g. author names, method names, key terms) when searching the Knowledge Graph with RetrieveNode. Do NOT search for generic terms like 'Paper' or 'Title of Paper A'."
+    except Exception as e:
+        logger.warning(f"Could not fetch paper titles: {e}")
+
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Question: {question}"},
+        {"role": "user", "content": f"Question: {question}{paper_context}"},
     ]
 
     for step in range(1, max_steps + 1):
@@ -105,7 +124,7 @@ async def run_agent(question: str, paper_ids: list[str],
         # Generate next thought + action
         try:
             response = await llm_client.generate(
-                current_messages, temperature=0.1, max_tokens=512
+                current_messages, temperature=0.1, max_tokens=1024
             )
         except Exception as e:
             yield {"event": "error", "data": {"message": f"LLM error: {str(e)}"}}
@@ -237,13 +256,21 @@ async def _execute_action(action_name: str, action_input: str,
                 node_ids = [node_name] + [n["name"] for n in neighbors if n.get("name")]
                 obs = f"Neighbors of '{node_name}'" + (f" ({edge_type})" if edge_type else "") + ":\n"
                 obs += "\n".join(
-                    f"  - {n['name']} (type: {n['type']}, relation: {n['relation']})"
-                    for n in neighbors[:10]
+                    f"  - {n['name']} (type: {n['type']}, relation: {n['relation']}" +
+                    (f", source_paper: '{n['source_paper']}'" if n.get("source_paper") else "") + ")"
+                    for n in neighbors[:12]
                 )
             else:
                 obs = f"No neighbors found for '{node_name}'" + (f" with edge type '{edge_type}'" if edge_type else "") + "."
                 node_ids = [node_name]
             return obs, node_ids
+
+        elif name == "inspectsection":
+            parts = _split_args(action_input)
+            paper_kw = parts[0] if parts else ""
+            topic_kw = parts[1] if len(parts) > 1 else "introduction"
+            snippet = await neo4j_service.inspect_section(paper_kw, topic_kw)
+            return snippet, [paper_kw]
 
         elif name == "nodedegree":
             parts = _split_args(action_input)
@@ -253,7 +280,7 @@ async def _execute_action(action_name: str, action_input: str,
             return f"Node '{node_name}' has {degree} neighbors" + (f" of type '{edge_type}'" if edge_type else "") + ".", [node_name]
 
         else:
-            return f"Unknown action: {action_name}. Available: RetrieveNode, NodeFeature, NeighborCheck, NodeDegree, Finish", []
+            return f"Unknown action: {action_name}. Available: RetrieveNode, NodeFeature, NeighborCheck, NodeDegree, InspectSection, Finish", []
 
     except Exception as e:
         logger.error(f"Action execution error: {e}")

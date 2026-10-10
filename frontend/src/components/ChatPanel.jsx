@@ -56,12 +56,66 @@ export default function ChatPanel({ selectedPaperIds, onSendQuery, answer, isStr
         ) : (
           messages.map((msg, i) => (
             <div key={i} className={`message-bubble ${msg.role}`}>
+              {msg.role === 'assistant' && msg.meta && (
+                <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem' }}>
+                  {msg.meta.mode === 'multi_agent' ? (
+                    <span style={{
+                      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(59, 130, 246, 0.2))',
+                      color: '#c084fc',
+                      border: '1px solid rgba(168, 85, 247, 0.4)',
+                      padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+                    }}>
+                      🤖 KG Multi-Agent (4-Stage Specialist Pipeline)
+                    </span>
+                  ) : msg.meta.mode === 'naive_rag' ? (
+                    <span style={{
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      color: 'var(--accent-blue)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+                    }}>
+                      📄 Naive RAG Baseline (Flat Retrieval)
+                    </span>
+                  ) : (
+                    <span style={{
+                      background: 'rgba(168, 85, 247, 0.15)',
+                      color: 'var(--accent-purple)',
+                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                      padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+                    }}>
+                      ⚡ KG Single-Agent (ReACT)
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="message-text">{msg.text}</div>
-              {msg.meta && msg.meta.steps_used && (
-                <div style={{ marginTop: 8, fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {msg.meta.steps_used} reasoning steps
-                  {msg.meta.lazy_completion_count > 0 &&
-                    ` • ${msg.meta.lazy_completion_count} lazy completions`}
+              {msg.meta && (
+                <div style={{ marginTop: 8, fontSize: '0.7rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(148, 163, 184, 0.1)', paddingTop: 6, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {msg.meta.mode === 'multi_agent' ? (
+                    <>
+                      <span>🎯 {msg.meta.pipeline_trace?.sub_questions || 0} sub-questions</span>
+                      <span>🔍 {msg.meta.pipeline_trace?.total_evidence || 0} KG evidence</span>
+                      <span>🛡️ {Math.round((msg.meta.pipeline_trace?.verification_confidence || 0) * 100)}% verified</span>
+                      {msg.meta.pipeline_trace?.revision_loops > 0 && <span>🔄 {msg.meta.pipeline_trace.revision_loops} revision</span>}
+                      {msg.meta.pipeline_trace?.total_duration_ms ? (
+                        <span>⏱ {msg.meta.pipeline_trace.total_duration_ms}ms</span>
+                      ) : msg.meta.latency_ms ? (
+                        <span>⏱ {msg.meta.latency_ms}ms</span>
+                      ) : null}
+                    </>
+                  ) : msg.meta.mode === 'naive_rag' ? (
+                    <>
+                      <span>0 Graph Hops</span>
+                      <span>📦 {msg.meta.context_chars?.toLocaleString() || '10,000+'} raw chars context</span>
+                      {msg.meta.latency_ms && <span>⏱ {msg.meta.latency_ms}ms</span>}
+                    </>
+                  ) : (
+                    <>
+                      <span>⚙ {msg.meta.steps_used} reasoning hops</span>
+                      {msg.meta.lazy_completion_count > 0 && <span>⚡ {msg.meta.lazy_completion_count} lazy completions</span>}
+                      {msg.meta.latency_ms && <span>⏱ {msg.meta.latency_ms}ms</span>}
+                    </>
+                  )}
                 </div>
               )}
             </div>

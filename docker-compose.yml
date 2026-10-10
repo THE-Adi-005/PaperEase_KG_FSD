@@ -27,17 +27,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  grobid:
-    image: lfoppiano/grobid:0.8.1
-    container_name: kg_grobid
-    ports:
-      - "8070:8070"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8070/api/isalive"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
 
 volumes:
   neo4j_data:

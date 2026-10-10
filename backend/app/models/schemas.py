@@ -135,6 +135,7 @@ class QueryRequest(BaseModel):
     question: str
     paper_ids: list[str] = []
     mode: QueryMode = QueryMode.SINGLE
+    pipeline: str = "auto"  # "single", "multi", or "auto" (uses config)
 
 
 class QueryResponse(BaseModel):
@@ -145,6 +146,19 @@ class QueryResponse(BaseModel):
     tables_referenced: list[TableData] = []
     lazy_completion_count: int = 0
     total_steps: int = 0
+
+
+class MultiAgentQueryResponse(BaseModel):
+    """Extended response for multi-agent pipeline."""
+    answer: str
+    pipeline: str = "multi_agent"
+    sub_questions: list[dict] = []
+    reasoning_steps: list[dict] = []
+    verification: dict = {}
+    subgraph: SubGraph = SubGraph()
+    total_steps: int = 0
+    total_duration_ms: int = 0
+    confidence: float = 0.0
 
 
 # ── API Response Models ──────────────────────────────────────────────
@@ -163,9 +177,8 @@ class PaperInfo(BaseModel):
 class HealthStatus(BaseModel):
     status: str = "ok"
     neo4j: bool = False
-    ollama: bool = False
-    grobid: bool = False
-    ollama_model: str = ""
+    llm: bool = False
+    llm_model: str = ""
 
 
 class UploadResponse(BaseModel):

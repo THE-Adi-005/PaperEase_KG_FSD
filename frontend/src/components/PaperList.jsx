@@ -1,6 +1,10 @@
-import { FileText, Check, Loader, AlertCircle } from 'lucide-react';
+import { Check, Clock, AlertCircle, FileText, Eye, Loader } from 'lucide-react';
+import { useState } from 'react';
+import ExtractedDataModal from './ExtractedDataModal';
 
 export default function PaperList({ papers, selectedIds, onSelect }) {
+  const [viewingPaper, setViewingPaper] = useState(null);
+
   if (!papers || papers.length === 0) {
     return (
       <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
@@ -37,9 +41,20 @@ export default function PaperList({ papers, selectedIds, onSelect }) {
           className={`paper-card ${selectedIds.includes(paper.id) ? 'selected' : ''}`}
           onClick={() => toggleSelect(paper.id)}
         >
-          <div className="paper-title">
-            <FileText size={13} style={{ marginRight: 6, opacity: 0.5, verticalAlign: 'middle' }} />
-            {paper.title}
+          <div className="paper-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, flex: 1, overflow: 'hidden' }}>
+              <FileText size={13} style={{ marginRight: 6, opacity: 0.5, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={paper.title}>
+                {paper.title}
+              </span>
+            </div>
+            <button 
+              title="View Extracted Graph Data"
+              style={{ background: 'none', border: 'none', color: 'var(--accent-blue)', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex', alignItems: 'center' }}
+              onClick={(e) => { e.stopPropagation(); setViewingPaper(paper); }}
+            >
+              <Eye size={14} />
+            </button>
           </div>
           <div className="paper-meta">
             {statusIcon(paper.status)}
@@ -53,6 +68,14 @@ export default function PaperList({ papers, selectedIds, onSelect }) {
           </div>
         </div>
       ))}
+      
+      {viewingPaper && (
+        <ExtractedDataModal 
+          paperId={viewingPaper.id} 
+          paperTitle={viewingPaper.title} 
+          onClose={() => setViewingPaper(null)} 
+        />
+      )}
     </div>
   );
 }

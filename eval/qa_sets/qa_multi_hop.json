@@ -1,0 +1,122 @@
+[
+  {
+    "question": "What reasoning strategies does this paper propose for grounding LLM reasoning with knowledge graphs?",
+    "expected": "The paper proposes three reasoning strategies: Chain-of-Thought (CoT), Tree-of-Thought (ToT), and Graph-of-Thought (GoT), combined with two graph interaction methods: Agent (using ReACT) and Automatic Graph Exploration.",
+    "paper_ids": [],
+    "category": "factual",
+    "required_hops": 1,
+    "expected_graph_path": ["Paper", "DISCUSSES_CONCEPT", "Reasoning Strategy"]
+  },
+  {
+    "question": "What benchmark does the paper use for evaluation?",
+    "expected": "The paper uses GRBench, a benchmark for domain-specific graph reasoning that includes graphs spanning various domains like healthcare, biology, chemistry, and physics.",
+    "paper_ids": [],
+    "category": "factual",
+    "required_hops": 1,
+    "expected_graph_path": ["Paper", "EVALUATED_ON", "GRBench"]
+  },
+  {
+    "question": "What improvement does the framework achieve over CoT baselines?",
+    "expected": "The framework achieves at least 26.5% improvement over CoT baselines on GRBench, with state-of-the-art performance.",
+    "paper_ids": [],
+    "category": "metric_extraction",
+    "required_hops": 2,
+    "expected_graph_path": ["Framework", "ACHIEVES", "26.5% improvement", "COMPARES_TO", "CoT"]
+  },
+  {
+    "question": "What are the four agent actions used for graph interaction?",
+    "expected": "The four agent actions are: RetrieveNode (find related nodes), NodeFeature (get node attributes), NeighborCheck (list neighbors), and NodeDegree (count neighbors).",
+    "paper_ids": [],
+    "category": "factual",
+    "required_hops": 1,
+    "expected_graph_path": ["Agent", "USES_METHOD", "RetrieveNode/NodeFeature/NeighborCheck/NodeDegree"]
+  },
+  {
+    "question": "What model sizes were used in the experiments?",
+    "expected": "The experiments used LLama 3.1 Instruct models in three sizes: 8B, 70B, and 405B (FP8 variant for the 405B model).",
+    "paper_ids": [],
+    "category": "factual",
+    "required_hops": 1,
+    "expected_graph_path": ["Experiment", "USES_METHOD", "LLama 3.1"]
+  },
+  {
+    "question": "What is the difference between the Agent method and Automatic Graph Exploration, and how do they compare on the benchmark?",
+    "expected": "The Agent method uses a ReACT-style loop where the LLM decides which tools to use step-by-step. Automatic Graph Exploration systematically explores graph neighborhoods without requiring the LLM to choose actions. Agent+CoT generally achieves the best performance.",
+    "paper_ids": [],
+    "category": "multi_hop",
+    "required_hops": 3,
+    "expected_graph_path": ["Agent", "COMPARES_TO", "Automatic Graph Exploration", "ACHIEVES", "performance scores"]
+  },
+  {
+    "question": "Which reasoning strategy combined with which graph interaction method achieved the best overall performance, and what specific scores did it achieve?",
+    "expected": "The Agent-based interaction combined with Chain-of-Thought (Agent+CoT) reasoning strategy generally achieves the best performance across benchmarks, with strong results on GRBench.",
+    "paper_ids": [],
+    "category": "multi_hop",
+    "required_hops": 3,
+    "expected_graph_path": ["Agent+CoT", "ACHIEVES", "best score", "EVALUATED_ON", "GRBench"]
+  },
+  {
+    "question": "What domains are covered in the GRBench benchmark, and how many graphs does it contain?",
+    "expected": "GRBench covers domains including healthcare/medicine, biology, chemistry, and physics. It contains domain-specific knowledge graphs that test multi-hop reasoning abilities.",
+    "paper_ids": [],
+    "category": "multi_hop",
+    "required_hops": 2,
+    "expected_graph_path": ["GRBench", "DISCUSSES_CONCEPT", "healthcare/biology/chemistry/physics"]
+  },
+  {
+    "question": "How does the paper address the problem of LLM hallucination, and what evidence supports this approach?",
+    "expected": "The paper addresses hallucination by grounding LLM reasoning in knowledge graphs. Instead of relying solely on the LLM's parametric knowledge, the system retrieves factual information from the KG at each reasoning step.",
+    "paper_ids": [],
+    "category": "conceptual",
+    "required_hops": 2,
+    "expected_graph_path": ["Framework", "DISCUSSES_CONCEPT", "Hallucination Reduction", "USES_METHOD", "KG Grounding"]
+  },
+  {
+    "question": "What is the role of the ReACT framework in this system, and how does it interact with the knowledge graph?",
+    "expected": "ReACT (Reasoning + Acting) provides the loop structure: Thought → Action → Observation. The LLM generates a Thought, then an Action (KG tool call), then receives an Observation (KG result). This repeats until the agent has enough information.",
+    "paper_ids": [],
+    "category": "conceptual",
+    "required_hops": 2,
+    "expected_graph_path": ["ReACT", "USES_METHOD", "Agent Actions", "EVALUATED_ON", "KG"]
+  },
+  {
+    "question": "What specific metrics or accuracy values were reported for the 8B model compared to the 70B model on the benchmark?",
+    "expected": "The 8B model showed significant improvements when using KG grounding compared to standalone CoT, with Agent+CoT providing the largest gains. The paper reports at least 26.5% improvement over CoT baseline.",
+    "paper_ids": [],
+    "category": "metric_extraction",
+    "required_hops": 3,
+    "expected_graph_path": ["LLama-8B", "ACHIEVES", "score", "COMPARES_TO", "LLama-70B", "ACHIEVES", "score"]
+  },
+  {
+    "question": "Does the paper discuss any limitations of the proposed approach, and what scenarios might cause degradation?",
+    "expected": "Limitations include: KG quality affects reasoning quality, multiple traversal steps increase latency, and the approach assumes relevant information exists in the KG. Sparse or incomplete graphs may degrade performance.",
+    "paper_ids": [],
+    "category": "conceptual",
+    "required_hops": 2,
+    "expected_graph_path": ["Framework", "DISCUSSES_CONCEPT", "Limitations"]
+  },
+  {
+    "question": "Trace the full reasoning path: What method does the paper propose, what benchmark was it tested on, what baseline was it compared against, and what was the improvement?",
+    "expected": "The paper proposes KG-grounded reasoning with Agent+CoT, tested on GRBench across healthcare/biology/chemistry/physics domains, compared against standalone CoT baselines, achieving at least 26.5% improvement.",
+    "paper_ids": [],
+    "category": "multi_hop_trace",
+    "required_hops": 4,
+    "expected_graph_path": ["Method", "EVALUATED_ON", "GRBench", "COMPARES_TO", "CoT Baseline", "ACHIEVES", "26.5% improvement"]
+  },
+  {
+    "question": "How do the different model sizes (8B vs 70B vs 405B) interact with the graph grounding — does larger model size reduce the benefit of KG grounding?",
+    "expected": "The paper examines multiple model sizes. KG grounding provides significant improvements across all sizes, but the magnitude of improvement may vary — smaller models typically benefit more from structured grounding since they have less parametric knowledge.",
+    "paper_ids": [],
+    "category": "cross_analysis",
+    "required_hops": 3,
+    "expected_graph_path": ["LLama-8B", "ACHIEVES", "improvement_8B", "LLama-70B", "ACHIEVES", "improvement_70B"]
+  },
+  {
+    "question": "What is the relationship between graph density and reasoning accuracy in this paper's framework?",
+    "expected": "Denser graphs with more nodes and edges provide more information for the agent to traverse, leading to faster and more accurate answers. However, excessively dense graphs may introduce noise. The paper's approach balances this through structured extraction.",
+    "paper_ids": [],
+    "category": "conceptual",
+    "required_hops": 2,
+    "expected_graph_path": ["Framework", "DISCUSSES_CONCEPT", "Graph Density", "ACHIEVES", "Reasoning Accuracy"]
+  }
+]

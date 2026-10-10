@@ -6,6 +6,7 @@ Every edge carries source_paper_id and source_section_id for provenance.
 
 from neo4j import AsyncGraphDatabase, AsyncDriver
 import logging
+import json
 from typing import Optional
 
 from app.config import settings
@@ -117,15 +118,16 @@ class Neo4jService:
 
             # Tables
             for tbl in paper.tables:
+                rows_json = json.dumps(tbl.rows or [])
                 await session.run(
                     """MERGE (t:Table {id: $tid})
                        SET t.label = $label, t.caption = $caption,
-                           t.headers = $headers, t.name = $label
+                           t.headers = $headers, t.rows = $rows_json, t.name = $label
                        WITH t
                        MATCH (p:Paper {id: $pid})
                        MERGE (p)-[:CONTAINS_TABLE {source_paper_id: $pid}]->(t)""",
                     tid=tbl.id, label=tbl.label, caption=tbl.caption,
-                    headers=tbl.headers, pid=paper.id,
+                    headers=tbl.headers, rows_json=rows_json, pid=paper.id,
                 )
                 if tbl.section_id:
                     await session.run(
@@ -343,33 +345,29 @@ class Neo4jService:
                               edge_type: Optional[str] = None) -> list[dict]:
         """List neighbors of a node. Used by NeighborCheck agent tool."""
         async with self.driver.session() as session:
-            if edge_type:
-                query = """
-                    MATCH (n)-[r]->(m)
-                    WHERE (n.name = $name OR n.id = $name) AND type(r) = $etype
-                    RETURN m.name as name, m.id as id, labels(m) as labels, type(r) as rel_type
-                    UNION
-                    MATCH (m)-[r]->(n)
-                    WHERE (n.name = $name OR n.id = $name) AND type(r) = $etype
-                    RETURN m.name as name, m.id as id, labels(m) as labels, type(r) as rel_type
-                """
-                result = await session.run(query, name=node_name, etype=edge_type)
-            else:
-                query = """
-                    MATCH (n)-[r]-(m)
-                    WHERE n.name = $name OR n.id = $name
-                    RETURN DISTINCT m.name as name, m.id as id,
-                           labels(m) as labels, type(r) as rel_type
-                """
-                result = await session.run(query, name=node_name)
-
+            query = """
+                MATCH (n)-[r]->(m)
+                WHERE (n.name = $name OR n.id = $name) AND ($etype IS NULL OR type(r) = $etype)
+                OPTIONAL MATCH (p:Paper {id: r.source_paper_id})
+                RETURN m.name as name, m.id as id, labels(m)[0] as type, type(r) as rel_type,
+                       coalesce(p.title, r.source_paper_id, 'Shared') as source_paper
+                UNION
+                MATCH (m)-[r]->(n)
+                WHERE (n.name = $name OR n.id = $name) AND ($etype IS NULL OR type(r) = $etype)
+                OPTIONAL MATCH (p:Paper {id: r.source_paper_id})
+                RETURN m.name as name, m.id as id, labels(m)[0] as type, type(r) as rel_type,
+                       coalesce(p.title, r.source_paper_id, 'Shared') as source_paper
+                LIMIT 25
+            """
+            result = await session.run(query, name=node_name, etype=edge_type)
             neighbors = []
             async for record in result:
                 neighbors.append({
                     "name": record["name"] or record["id"],
                     "id": record["id"],
-                    "type": record["labels"][0] if record["labels"] else "Unknown",
+                    "type": record["type"] or "Unknown",
                     "relation": record["rel_type"],
+                    "source_paper": record["source_paper"] or "Shared",
                 })
             return neighbors
 
@@ -454,6 +452,23 @@ class Neo4jService:
                 sections.append(dict(record))
             return sections
 
+    async def inspect_section(self, paper_keyword: str, topic_keyword: str) -> str:
+        """Fetch matching section text for deep factual grounding."""
+        async with self.driver.session() as session:
+            result = await session.run(
+                """MATCH (p:Paper)-[:CONTAINS_SECTION]->(s:Section)
+                   WHERE (toLower(p.title) CONTAINS toLower($pkw) OR toLower(p.id) CONTAINS toLower($pkw))
+                     AND (toLower(s.title) CONTAINS toLower($tkw) OR toLower(s.text) CONTAINS toLower($tkw))
+                   RETURN p.title as paper, s.title as section, s.text as text
+                   LIMIT 1""",
+                pkw=paper_keyword, tkw=topic_keyword,
+            )
+            record = await result.single()
+            if record:
+                snippet = record["text"][:1000].replace('\n', ' ')
+                return f"[{record['paper']} - Section: {record['section']}]:\n\"{snippet}...\""
+            return f"No section found matching paper '{paper_keyword}' with topic '{topic_keyword}'."
+
     async def get_paper_figures(self, paper_id: str) -> list[FigureData]:
         """Get all figures for a paper."""
         async with self.driver.session() as session:
@@ -482,11 +497,17 @@ class Neo4jService:
             tables = []
             async for record in result:
                 t = record["t"]
+                rows_raw = t.get("rows", "[]")
+                try:
+                    rows = json.loads(rows_raw) if isinstance(rows_raw, str) else (rows_raw or [])
+                except Exception:
+                    rows = []
                 tables.append(TableData(
                     id=t.get("id", ""),
                     label=t.get("label", ""),
                     caption=t.get("caption", ""),
                     headers=t.get("headers", []),
+                    rows=rows,
                 ))
             return tables
 

@@ -62,8 +62,12 @@ figures_path.mkdir(parents=True, exist_ok=True)
 app.mount("/figures", StaticFiles(directory=str(figures_path)), name="figures")
 
 # ── Register routers ──
-from app.routers import health, papers, query
+from app.routers import health, papers, query, demo, eval, grounding, ablation
 
 app.include_router(health.router, tags=["Health"])
 app.include_router(papers.router, prefix="/api", tags=["Papers"])
 app.include_router(query.router, prefix="/api", tags=["Query"])
+app.include_router(demo.router, prefix="/api/demo", tags=["Demo"])
+app.include_router(eval.router, prefix="/api/eval", tags=["Evaluation"])
+app.include_router(grounding.router, prefix="/api/grounding", tags=["Grounding"])
+app.include_router(ablation.router, prefix="/api/eval/ablation", tags=["Ablation"])
