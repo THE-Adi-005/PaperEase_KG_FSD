@@ -1,0 +1,20 @@
+# post-hoc: prompt R7 with relation_subset = R5 relations
+config_id: cfg_r5
+prompt_profile: R7
+runs: 3
+vote_fraction: 0.5
+cap: 0
+enforce_signatures: false
+allow_dynamic: false
+relation_subset:
+  - USES_METHOD
+  - EVALUATED_ON
+  - ACHIEVES
+  - COMPARES_TO
+  - EXTENDS
+include_tables: true
+enable_same_as: true
+same_as_threshold: 0.85
+trunc: 3000
+temperature: 0.6
+papers: all

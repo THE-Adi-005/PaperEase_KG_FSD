@@ -1,0 +1,14 @@
+config_id: cfg_sig_on
+prompt_profile: R7
+runs: 3
+vote_fraction: 0.5
+cap: 0
+enforce_signatures: true
+allow_dynamic: false
+relation_subset: null
+include_tables: true
+enable_same_as: true
+same_as_threshold: 0.85
+trunc: 3000
+temperature: 0.6
+papers: all
