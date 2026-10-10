@@ -40,10 +40,15 @@ def _is_triple_valid(
     head_type: str,
     tail_type: str,
     profile: SchemaProfile,
+    allow_dynamic: bool | None = None,
+    enforce_signatures: bool | None = None,
 ) -> bool:
     """Validate a triple against dynamic relation policy and type signatures."""
+    allow_dyn = settings.ALLOW_DYNAMIC_RELATIONS if allow_dynamic is None else allow_dynamic
+    enforce_sigs = settings.ENFORCE_TYPE_SIGNATURES if enforce_signatures is None else enforce_signatures
+
     # Dynamic relation check: reject if not in profile.llm_relations
-    if not settings.ALLOW_DYNAMIC_RELATIONS:
+    if not allow_dyn:
         if relation not in profile.llm_relations:
             return False
 
@@ -52,7 +57,7 @@ def _is_triple_valid(
     t_type = sanitize_type(tail_type)
 
     # Type signature check
-    if settings.ENFORCE_TYPE_SIGNATURES:
+    if enforce_sigs:
         valid_sigs = profile.type_signatures.get(relation)
         if valid_sigs is not None:
             if (h_type, t_type) not in valid_sigs:
@@ -110,15 +115,10 @@ async def build_kg(paper: ParsedPaper,
             )
             all_runs_triples.append(raw_triples)
 
-        # ── Majority voting ──
+        # ── Majority voting & cap ──
         validated_triples = _self_consistency_filter(
-            all_runs_triples, paper.id, section.id, num_runs
+            all_runs_triples, paper.id, section.id, num_runs, cap=cap
         )
-
-        # ── Triples-per-section cap ──
-        if cap and cap > 0:
-            validated_triples.sort(key=lambda t: (-t.confidence, t.relation, t.head.lower(), t.tail.lower()))
-            validated_triples = validated_triples[:cap]
 
         # ── Merge into Neo4j ──
         if validated_triples:
@@ -172,15 +172,20 @@ async def build_kg(paper: ParsedPaper,
     logger.info(f"KG build complete for '{paper.title}': {total_triples} total triples")
 
 
-def _self_consistency_filter(all_runs: list[list[dict]],
-                              paper_id: str,
-                              section_id: str,
-                              num_runs: int | None = None) -> list[Triple]:
-    """Filter triples by self-consistency.
+def filter_runs(
+    all_runs: list[list[dict]],
+    paper_id: str,
+    section_id: str,
+    *,
+    vote_fraction: float,
+    profile: SchemaProfile,
+    allow_dynamic: bool,
+    enforce_signatures: bool,
+    cap: int = 0,
+) -> list[Triple]:
+    """Pure filter: counts votes, sanitizes types, validates triples, sorts deterministically and caps.
 
-    A triple passes if it appears in >= ceil(VOTE_FRACTION * N) runs.
-    With the default VOTE_FRACTION=0.5 and N=2: ceil(0.5 * 2)=1, so any
-    triple seen at least once passes — identical to the previous behaviour.
+    Does not access global settings.
     """
     if not all_runs:
         return []
@@ -207,12 +212,11 @@ def _self_consistency_filter(all_runs: list[list[dict]],
                 triple_counts[key] += 1
                 triple_map[key] = t  # Keep the last raw dict
 
-    # Pass threshold: count >= min_votes(N, VOTE_FRACTION)
-    n = num_runs if num_runs is not None else len(all_runs)
-    threshold = min_votes(n, settings.VOTE_FRACTION)
+    # Pass threshold: count >= min_votes(N, vote_fraction)
+    n = len(all_runs)
+    threshold = min_votes(n, vote_fraction)
     majority_triples = []
 
-    profile = get_active_profile()
     for key, count in triple_counts.items():
         if count >= threshold:
             raw = triple_map[key]
@@ -220,7 +224,14 @@ def _self_consistency_filter(all_runs: list[list[dict]],
             head_type = sanitize_type(raw.get("head_type", "Concept"))
             tail_type = sanitize_type(raw.get("tail_type", "Concept"))
 
-            if not _is_triple_valid(relation, head_type, tail_type, profile):
+            if not _is_triple_valid(
+                relation,
+                head_type,
+                tail_type,
+                profile,
+                allow_dynamic=allow_dynamic,
+                enforce_signatures=enforce_signatures,
+            ):
                 continue
 
             # Validate/register relation type
@@ -238,7 +249,33 @@ def _self_consistency_filter(all_runs: list[list[dict]],
                 confidence=count / len(all_runs),
             ))
 
+    # Deterministic sort and cap
+    majority_triples.sort(key=lambda t: (-t.confidence, t.relation, t.head.lower(), t.tail.lower()))
+    if cap and cap > 0:
+        majority_triples = majority_triples[:cap]
+
     return majority_triples
+
+
+def _self_consistency_filter(
+    all_runs: list[list[dict]],
+    paper_id: str,
+    section_id: str,
+    num_runs: int | None = None,
+    cap: int | None = None,
+) -> list[Triple]:
+    """Thin wrapper calling filter_runs with values from settings."""
+    c = settings.MAX_TRIPLES_PER_SECTION if cap is None else cap
+    return filter_runs(
+        all_runs,
+        paper_id,
+        section_id,
+        vote_fraction=settings.VOTE_FRACTION,
+        profile=get_active_profile(),
+        allow_dynamic=settings.ALLOW_DYNAMIC_RELATIONS,
+        enforce_signatures=settings.ENFORCE_TYPE_SIGNATURES,
+        cap=c,
+    )
 
 
 def _dicts_to_triples(raw_list: list[dict], paper_id: str,
