@@ -12,6 +12,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.config import settings
+from app.schema_profiles import norm_name
 
 logger = logging.getLogger(__name__)
 
@@ -37,20 +38,26 @@ class EmbeddingService:
             self.load_model()
         return self.model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
 
-    async def link_cross_paper_entities(self, paper_id: str) -> int:
-        """Create SAME_AS edges between similar concepts across papers.
+    async def link_cross_paper_entities(self, paper_id: str,
+                                        config_id: str = settings.CONFIG_ID) -> int:
+        """Create SAME_AS edges between similar concepts across papers within the same config_id.
         
         Returns count of new SAME_AS edges created.
         """
+        if not settings.ENABLE_SAME_AS:
+            logger.info("SAME_AS linking disabled by ENABLE_SAME_AS setting")
+            return 0
+
+        cid = config_id if config_id is not None else settings.CONFIG_ID
         from app.services.neo4j_client import neo4j_service
 
-        # Get all concept-like nodes from the new paper
-        new_nodes = await self._get_entity_nodes(paper_id)
+        # Get all concept-like nodes from the new paper for this config_id
+        new_nodes = await self._get_entity_nodes(paper_id, cid)
         if not new_nodes:
             return 0
 
-        # Get concept-like nodes from OTHER papers
-        other_nodes = await self._get_other_entity_nodes(paper_id)
+        # Get concept-like nodes from OTHER papers for this config_id
+        other_nodes = await self._get_other_entity_nodes(paper_id, cid)
         if not other_nodes:
             return 0
 
@@ -80,68 +87,99 @@ class EmbeddingService:
 
                         try:
                             await session.run(
-                                """MATCH (a {name: $name_a}), (b {name: $name_b})
+                                """MATCH (a:Entity {norm_name: $na, config_id: $cid}),
+                                         (b:Entity {norm_name: $nb, config_id: $cid})
                                    WHERE a <> b
                                    MERGE (a)-[:SAME_AS {
                                        similarity: $sim,
-                                       source_paper_id: $pid
+                                       source_paper_id: $pid,
+                                       config_id: $cid
                                    }]->(b)""",
-                                name_a=new_node["name"],
-                                name_b=other_node["name"],
+                                na=new_node["norm_name"],
+                                nb=other_node["norm_name"],
                                 sim=sim,
                                 pid=paper_id,
+                                cid=cid,
                             )
                             link_count += 1
                         except Exception as e:
                             logger.debug(f"SAME_AS link failed: {e}")
 
         logger.info(
-            f"Cross-paper linking for {paper_id}: "
+            f"Cross-paper linking for {paper_id} (config_id={cid}): "
             f"{link_count} SAME_AS edges created "
             f"(threshold={threshold})"
         )
         return link_count
 
-    async def _get_entity_nodes(self, paper_id: str) -> list[dict]:
-        """Get Concept/Method/Dataset nodes for a specific paper."""
+    async def _get_entity_nodes(self, paper_id: str, config_id: str) -> list[dict]:
+        """Get Concept/Method/Dataset nodes for a specific paper scoped to config_id."""
         from app.services.neo4j_client import neo4j_service
         async with neo4j_service.driver.session() as session:
             result = await session.run(
-                """MATCH (n)
+                """MATCH (n:Entity)
                    WHERE (n:Concept OR n:Method OR n:Dataset)
-                     AND EXISTS {
-                         MATCH ()-[r]->(n) WHERE r.source_paper_id = $pid
-                     } OR EXISTS {
-                         MATCH (n)-[r]->() WHERE r.source_paper_id = $pid
-                     }
-                   RETURN DISTINCT n.name as name, labels(n) as labels""",
+                     AND coalesce(n.config_id, 'default') = $cid
+                     AND (
+                         EXISTS {
+                             MATCH ()-[r]->(n)
+                             WHERE r.source_paper_id = $pid
+                               AND coalesce(r.config_id, 'default') = $cid
+                         } OR EXISTS {
+                             MATCH (n)-[r]->()
+                             WHERE r.source_paper_id = $pid
+                               AND coalesce(r.config_id, 'default') = $cid
+                         }
+                     )
+                   RETURN DISTINCT n.name as name, n.norm_name as norm_name, labels(n) as labels""",
                 pid=paper_id,
+                cid=config_id,
             )
             nodes = []
             async for record in result:
-                if record["name"]:
-                    nodes.append({"name": record["name"], "labels": record["labels"]})
+                raw_name = record["name"]
+                if raw_name:
+                    n_norm = record["norm_name"] or norm_name(raw_name)
+                    nodes.append({
+                        "name": raw_name,
+                        "norm_name": n_norm,
+                        "labels": record["labels"],
+                    })
             return nodes
 
-    async def _get_other_entity_nodes(self, paper_id: str) -> list[dict]:
-        """Get Concept/Method/Dataset nodes from other papers."""
+    async def _get_other_entity_nodes(self, paper_id: str, config_id: str) -> list[dict]:
+        """Get Concept/Method/Dataset nodes from other papers scoped to config_id."""
         from app.services.neo4j_client import neo4j_service
         async with neo4j_service.driver.session() as session:
             result = await session.run(
-                """MATCH (n)
+                """MATCH (n:Entity)
                    WHERE (n:Concept OR n:Method OR n:Dataset)
-                     AND (EXISTS {
-                         MATCH ()-[r]->(n) WHERE r.source_paper_id <> $pid
-                     } OR EXISTS {
-                         MATCH (n)-[r]->() WHERE r.source_paper_id <> $pid
-                     })
-                   RETURN DISTINCT n.name as name, labels(n) as labels""",
+                     AND coalesce(n.config_id, 'default') = $cid
+                     AND (
+                         EXISTS {
+                             MATCH ()-[r]->(n)
+                             WHERE r.source_paper_id <> $pid
+                               AND coalesce(r.config_id, 'default') = $cid
+                         } OR EXISTS {
+                             MATCH (n)-[r]->()
+                             WHERE r.source_paper_id <> $pid
+                               AND coalesce(r.config_id, 'default') = $cid
+                         }
+                     )
+                   RETURN DISTINCT n.name as name, n.norm_name as norm_name, labels(n) as labels""",
                 pid=paper_id,
+                cid=config_id,
             )
             nodes = []
             async for record in result:
-                if record["name"]:
-                    nodes.append({"name": record["name"], "labels": record["labels"]})
+                raw_name = record["name"]
+                if raw_name:
+                    n_norm = record["norm_name"] or norm_name(raw_name)
+                    nodes.append({
+                        "name": raw_name,
+                        "norm_name": n_norm,
+                        "labels": record["labels"],
+                    })
             return nodes
 
 

@@ -185,13 +185,13 @@ async def _ingest_paper(file_path: str, paper_id: str):
         # Phase 2: Build KG (LLM extraction)
         _ingestion_status[paper_id]["status"] = PaperStatus.EXTRACTING
         from app.services.kg_builder import build_kg
-        async for progress in build_kg(parsed_paper):
+        async for progress in build_kg(parsed_paper, config_id=settings.CONFIG_ID):
             _ingestion_status[paper_id]["progress_pct"] = progress.get("progress_pct", 0.0)
 
         # Phase 3: Cross-paper entity linking
         _ingestion_status[paper_id]["status"] = PaperStatus.LINKING
         from app.services.embeddings import embedding_service
-        link_count = await embedding_service.link_cross_paper_entities(paper_id)
+        link_count = await embedding_service.link_cross_paper_entities(paper_id, config_id=settings.CONFIG_ID)
         logger.info(f"Cross-paper linking: {link_count} SAME_AS edges")
 
         # Done

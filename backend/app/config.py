@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     SECTION_TEXT_LIMIT: int = 3000  # Max chars per section for extraction
 
     # Schema profile & ablation knobs
+    CONFIG_ID: str = "default"          # Default namespace for semantic entities & edges
+    ENABLE_SAME_AS: bool = True         # Toggle cross-paper SAME_AS linking
     SCHEMA_PROFILE: str = "R7"          # Active profile: R3 | R5 | R7 | R10
     MAX_TRIPLES_PER_SECTION: int = 0    # 0 = uncapped; positive N caps triples per section
     VOTE_FRACTION: float = 0.5          # pass if count >= ceil(N * VOTE_FRACTION)
