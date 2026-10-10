@@ -24,6 +24,9 @@ _RELATION_DESCRIPTIONS: dict[str, str] = {
     "EXTENDS": "method extends another method",
     "CITES": "paper/work cites another work",
     "SAME_AS": "two entities represent the same concept/method/dataset",
+    "TRAINED_ON": "method is trained on a dataset",
+    "OUTPERFORMS": "method explicitly outperforms another method",
+    "HAS_COMPONENT": "method has a module or component",
 }
 
 _ENTITY_DESCRIPTIONS: dict[str, str] = {

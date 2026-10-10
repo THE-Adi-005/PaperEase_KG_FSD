@@ -28,69 +28,74 @@ class SchemaProfile:
 
 
 # ── Canonical (head_type, tail_type) signatures ──────────────────────
-_SIGNATURES: dict[str, list[tuple[str, str]]] = {
-    "ACHIEVES":          [("Method", "Metric")],
-    "EVALUATED_ON":      [("Method", "Dataset")],
-    "USES_METHOD":       [("Paper", "Method"), ("Section", "Method"), ("Concept", "Method")],
-    "DISCUSSES_CONCEPT": [("Section", "Concept"), ("Paper", "Concept")],
-    "COMPARES_TO":       [("Method", "Method")],
-    "EXTENDS":           [("Method", "Method")],
-    "CITES":             [("Paper", "Citation"), ("Citation", "Citation")],
-    "SAME_AS":           [("Concept", "Concept"), ("Method", "Method"), ("Dataset", "Dataset")],
+ENTITY_TYPES = ["Method", "Dataset", "Metric", "Concept", "Citation"]
+ALL_HEADS = ENTITY_TYPES + ["Paper", "Section"]
+_ORDER = [
+    "USES_METHOD",
+    "DISCUSSES_CONCEPT",
+    "EVALUATED_ON",
+    "ACHIEVES",
+    "COMPARES_TO",
+    "EXTENDS",
+    "CITES",
+    "TRAINED_ON",
+    "OUTPERFORMS",
+    "HAS_COMPONENT",
+]
+_R3 = {"USES_METHOD", "EVALUATED_ON", "ACHIEVES"}
+_R5 = _R3 | {"COMPARES_TO", "EXTENDS"}
+_R7 = _R5 | {"DISCUSSES_CONCEPT", "CITES"}
+_R10 = _R7 | {"TRAINED_ON", "OUTPERFORMS", "HAS_COMPONENT"}
+_SIGNATURES = {
+    "ACHIEVES": [("Method", "Metric")],
+    "EVALUATED_ON": [("Method", "Dataset")],
+    "USES_METHOD": [(h, t) for h in ALL_HEADS for t in ("Method", "Concept")],
+    "DISCUSSES_CONCEPT": [(h, "Concept") for h in ALL_HEADS],
+    "COMPARES_TO": [("Method", "Method")],
+    "EXTENDS": [("Method", "Method")],
+    "CITES": [(h, "Citation") for h in ALL_HEADS],
+    "TRAINED_ON": [("Method", "Dataset")],
+    "OUTPERFORMS": [("Method", "Method")],
+    "HAS_COMPONENT": [("Method", "Method"), ("Method", "Concept")],
+    "SAME_AS": [("Concept", "Concept"), ("Method", "Method"), ("Dataset", "Dataset")],
 }
 
 # ── Profile definitions ───────────────────────────────────────────────
 
-S3 = SchemaProfile(
-    name="S3",
-    entity_types=["Method", "Dataset", "Metric"],
-    llm_relations=["ACHIEVES", "EVALUATED_ON", "USES_METHOD"],
-    type_signatures={k: v for k, v in _SIGNATURES.items()
-                     if k in {"ACHIEVES", "EVALUATED_ON", "USES_METHOD"}},
-    allow_dynamic_relations=False,
+R3 = SchemaProfile(
+    name="R3",
+    entity_types=ENTITY_TYPES,
+    llm_relations=[r for r in _ORDER if r in _R3],
+    type_signatures={r: _SIGNATURES[r] for r in _ORDER if r in _R3},
 )
 
-S5 = SchemaProfile(
-    name="S5",
-    entity_types=["Method", "Dataset", "Metric", "Concept", "Citation"],
-    llm_relations=[
-        "ACHIEVES", "EVALUATED_ON", "USES_METHOD",
-        "DISCUSSES_CONCEPT", "CITES",
-    ],
-    type_signatures={k: v for k, v in _SIGNATURES.items()
-                     if k in {"ACHIEVES", "EVALUATED_ON", "USES_METHOD",
-                              "DISCUSSES_CONCEPT", "CITES"}},
-    allow_dynamic_relations=False,
+R5 = SchemaProfile(
+    name="R5",
+    entity_types=ENTITY_TYPES,
+    llm_relations=[r for r in _ORDER if r in _R5],
+    type_signatures={r: _SIGNATURES[r] for r in _ORDER if r in _R5},
 )
 
-# S8 is the *current default* — matches pre-Phase-1 behaviour exactly.
-S8 = SchemaProfile(
-    name="S8",
-    entity_types=["Method", "Dataset", "Metric", "Concept", "Citation"],
-    llm_relations=[
-        "USES_METHOD", "DISCUSSES_CONCEPT", "EVALUATED_ON",
-        "ACHIEVES", "COMPARES_TO", "EXTENDS", "CITES",
-    ],
-    type_signatures={k: v for k, v in _SIGNATURES.items() if k != "SAME_AS"},
-    allow_dynamic_relations=True,
+R7 = SchemaProfile(
+    name="R7",
+    entity_types=ENTITY_TYPES,
+    llm_relations=[r for r in _ORDER if r in _R7],
+    type_signatures={r: _SIGNATURES[r] for r in _ORDER if r in _R7},
 )
 
-S12 = SchemaProfile(
-    name="S12",
-    entity_types=["Method", "Dataset", "Metric", "Concept", "Citation"],
-    llm_relations=[
-        "USES_METHOD", "DISCUSSES_CONCEPT", "EVALUATED_ON",
-        "ACHIEVES", "COMPARES_TO", "EXTENDS", "CITES", "SAME_AS",
-    ],
-    type_signatures=dict(_SIGNATURES),
-    allow_dynamic_relations=True,
+R10 = SchemaProfile(
+    name="R10",
+    entity_types=ENTITY_TYPES,
+    llm_relations=[r for r in _ORDER if r in _R10],
+    type_signatures={r: _SIGNATURES[r] for r in _ORDER if r in _R10},
 )
 
 PROFILES: dict[str, SchemaProfile] = {
-    "S3": S3,
-    "S5": S5,
-    "S8": S8,
-    "S12": S12,
+    "R3": R3,
+    "R5": R5,
+    "R7": R7,
+    "R10": R10,
+    "S8": R7,
 }
 
 
@@ -100,12 +105,10 @@ def get_active_profile() -> SchemaProfile:
     Uses a lazy import to avoid circular dependency with config.py.
     """
     from app.config import settings  # noqa: PLC0415
-    name = getattr(settings, "SCHEMA_PROFILE", "S8")
+    name = getattr(settings, "SCHEMA_PROFILE", "R7")
     profile = PROFILES.get(name)
     if profile is None:
-        raise ValueError(
-            f"Unknown SCHEMA_PROFILE={name!r}. Valid values: {list(PROFILES)}"
-        )
+        return PROFILES["R7"]
     return profile
 
 
