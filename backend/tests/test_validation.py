@@ -46,3 +46,32 @@ def test_signature_rejection_only_when_enforced(monkeypatch):
     assert not _is_triple_valid("ACHIEVES", "Dataset", "Dataset", r7)
     # Valid signature passes
     assert _is_triple_valid("ACHIEVES", "Method", "Metric", r7)
+
+
+def test_self_consistency_filter_n1_applies_validity_rules(monkeypatch):
+    from app.services.kg_builder import _self_consistency_filter
+    monkeypatch.setattr(settings, "SCHEMA_PROFILE", "R3")
+    monkeypatch.setattr(settings, "ALLOW_DYNAMIC_RELATIONS", False)
+
+    # Run with N=1 containing an invalid dynamic relation not in R3
+    raw_triples = [
+        {"head": "BERT", "head_type": "Paper", "relation": "COMPARES_TO", "tail": "RoBERTa", "tail_type": "Paper"},
+        {"head": "BERT", "head_type": "Paper", "relation": "USES_METHOD", "tail": "Attention", "tail_type": "InvalidType"},
+    ]
+    # For N=1
+    res1 = _self_consistency_filter([raw_triples], paper_id="p1", section_id="s1", num_runs=1)
+    # COMPARES_TO should be rejected by ALLOW_DYNAMIC_RELATIONS=False
+    assert len(res1) == 1
+    assert res1[0].relation == "USES_METHOD"
+    # Types should be sanitized from "Paper" and "InvalidType" to "Concept"
+    assert res1[0].head_type == "Concept"
+    assert res1[0].tail_type == "Concept"
+    assert res1[0].confidence == 1.0
+
+    # For N=2 with identical raw_triples
+    res2 = _self_consistency_filter([raw_triples, raw_triples], paper_id="p1", section_id="s1", num_runs=2)
+    assert len(res2) == 1
+    assert res2[0].relation == res1[0].relation
+    assert res2[0].head_type == res1[0].head_type
+    assert res2[0].tail_type == res1[0].tail_type
+

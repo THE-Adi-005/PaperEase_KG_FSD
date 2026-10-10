@@ -184,10 +184,6 @@ def _self_consistency_filter(all_runs: list[list[dict]],
     if not all_runs:
         return []
 
-    # If only 1 run, keep everything
-    if len(all_runs) == 1:
-        return _dicts_to_triples(all_runs[0], paper_id, section_id)
-
     # Count occurrences of each (head, relation, tail) tuple
     triple_counts = Counter()
     triple_map = {}
