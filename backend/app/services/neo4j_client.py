@@ -20,6 +20,7 @@ from app.models.schemas import (
 )
 from app.models.neo4j_schema import SETUP_QUERIES, GRAPH_STATS_EXCLUDE_RELATIONS
 from app.schema_profiles import norm_name as _norm
+from app.triple_filters import graph_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -665,32 +666,39 @@ class Neo4jService:
         """Return graph topology stats for semantic entities and edges only.
 
         Excludes structural relations (AUTHORED_BY, CONTAINS_SECTION, CONTAINS_FIGURE,
-        CONTAINS_TABLE, ILLUSTRATED_BY).
+        CONTAINS_TABLE, ILLUSTRATED_BY) and SAME_AS from total_edges and relation_type_counts.
+        SAME_AS stays only in same_as_edges.
         Filters by paper_id and/or config_id if provided.
         """
         async with self.driver.session() as session:
-            # Semantic nodes count
+            # Semantic nodes count (either incoming or outgoing edge from paper_id)
             node_query = """
                 MATCH (n:Entity)
                 WHERE ($cid IS NULL OR coalesce(n.config_id, 'default') = $cid)
             """
             if paper_id:
                 node_query += """
-                    AND EXISTS {
-                        MATCH ()-[r]->(n)
-                        WHERE r.source_paper_id = $pid
-                          AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
-                    }
+                    AND (
+                        EXISTS {
+                            MATCH ()-[r]->(n)
+                            WHERE r.source_paper_id = $pid
+                              AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                        } OR EXISTS {
+                            MATCH (n)-[r]->()
+                            WHERE r.source_paper_id = $pid
+                              AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                        }
+                    )
                 """
             node_query += " RETURN count(DISTINCT n) as count"
             res = await session.run(node_query, cid=config_id, pid=paper_id)
             rec = await res.single()
             total_nodes = rec["count"] if rec else 0
 
-            # Semantic edges count
-            exclude_list = list(GRAPH_STATS_EXCLUDE_RELATIONS)
+            # Semantic edges count (exclude structural list AND SAME_AS)
+            exclude_list = list(GRAPH_STATS_EXCLUDE_RELATIONS | {"SAME_AS"})
             edge_query = """
-                MATCH (h)-[r]->(t)
+                MATCH (h:Entity)-[r]->(t:Entity)
                 WHERE NOT type(r) IN $exclude
                   AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
                   AND ($pid IS NULL OR r.source_paper_id = $pid)
@@ -707,11 +715,17 @@ class Neo4jService:
             """
             if paper_id:
                 node_type_query += """
-                    AND EXISTS {
-                        MATCH ()-[r]->(n)
-                        WHERE r.source_paper_id = $pid
-                          AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
-                    }
+                    AND (
+                        EXISTS {
+                            MATCH ()-[r]->(n)
+                            WHERE r.source_paper_id = $pid
+                              AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                        } OR EXISTS {
+                            MATCH (n)-[r]->()
+                            WHERE r.source_paper_id = $pid
+                              AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
+                        }
+                    )
                 """
             node_type_query += """
                 UNWIND [lbl IN labels(n) WHERE lbl <> 'Entity'] as lbl
@@ -722,9 +736,9 @@ class Neo4jService:
             async for record in res:
                 node_type_counts[record["lbl"]] = record["count"]
 
-            # Relation counts
+            # Relation counts (exclude structural list AND SAME_AS)
             rel_query = """
-                MATCH (h)-[r]->(t)
+                MATCH (h:Entity)-[r]->(t:Entity)
                 WHERE NOT type(r) IN $exclude
                   AND ($cid IS NULL OR coalesce(r.config_id, 'default') = $cid)
                   AND ($pid IS NULL OR r.source_paper_id = $pid)
@@ -746,12 +760,7 @@ class Neo4jService:
             rec = await res.single()
             same_as_edges = rec["count"] if rec else 0
 
-            graph_density = 0.0
-            if total_nodes > 1:
-                max_edges = total_nodes * (total_nodes - 1)
-                graph_density = round(total_edges / max_edges, 6) if max_edges > 0 else 0.0
-
-            avg_degree = round(total_edges * 2.0 / total_nodes, 2) if total_nodes > 0 else 0.0
+            avg_degree, graph_density = graph_metrics(total_nodes, total_edges)
 
             return {
                 "total_nodes": total_nodes,
