@@ -46,7 +46,7 @@ def parse_metric(name: str):
     return name, None, False
 
 
-async def run_migration(dry_run: bool = False):
+async def run_migration(apply: bool = False):
     logger.info("Connecting to Neo4j at %s...", settings.NEO4J_URI)
     driver = AsyncGraphDatabase.driver(
         settings.NEO4J_URI,
@@ -56,8 +56,7 @@ async def run_migration(dry_run: bool = False):
     try:
         async with driver.session() as session:
             # 1. Find semantic entity nodes needing migration
-            labels_str = "|".join(SEMANTIC_ENTITY_LABELS)
-            find_nodes_cypher = f"""
+            find_nodes_cypher = """
                 MATCH (n)
                 WHERE any(lbl IN labels(n) WHERE lbl IN $labels)
                 RETURN elementId(n) as eid, labels(n) as lbls, n.name as name,
@@ -65,50 +64,13 @@ async def run_migration(dry_run: bool = False):
             """
             result = await session.run(find_nodes_cypher, labels=SEMANTIC_ENTITY_LABELS)
             nodes = [record async for record in result]
-            logger.info("Found %d semantic entity nodes in Neo4j.", len(nodes))
+            nodes_to_update = [
+                n for n in nodes
+                if n["cid"] is None or n["norm"] is None or "Entity" not in n["lbls"]
+            ]
+            logger.info("Found %d semantic entity nodes in Neo4j (%d need update).", len(nodes), len(nodes_to_update))
 
-            if not dry_run:
-                # Update nodes in batches
-                migrated_nodes = 0
-                for record in nodes:
-                    raw_name = record["name"] or ""
-                    normalized = norm_name(raw_name)
-                    lbls = record["lbls"]
-                    is_metric = "Metric" in lbls
-
-                    metric_params = {}
-                    if is_metric and raw_name:
-                        m_name, val, is_pct = parse_metric(raw_name)
-                        metric_params = {
-                            "metric_name": m_name,
-                            "metric_value": val,
-                            "is_percent": is_pct,
-                        }
-
-                    update_cypher = """
-                        MATCH (n) WHERE elementId(n) = $eid
-                        SET n:Entity,
-                            n.config_id = coalesce(n.config_id, 'default'),
-                            n.norm_name = coalesce(n.norm_name, $norm)
-                    """
-                    if metric_params:
-                        update_cypher += """
-                            SET n.metric_name = coalesce(n.metric_name, $metric_name),
-                                n.value       = coalesce(n.value, $metric_value),
-                                n.is_percent  = coalesce(n.is_percent, $is_percent)
-                        """
-
-                    await session.run(
-                        update_cypher,
-                        eid=record["eid"],
-                        norm=normalized,
-                        **metric_params,
-                    )
-                    migrated_nodes += 1
-
-                logger.info("Migrated %d entity nodes with :Entity, norm_name, and config_id='default'.", migrated_nodes)
-
-            # 2. Migrate relationships with source_paper_id
+            # 2. Find relationships with source_paper_id missing config_id
             find_edges_cypher = """
                 MATCH ()-[r]->()
                 WHERE r.source_paper_id IS NOT NULL AND r.config_id IS NULL
@@ -118,7 +80,93 @@ async def run_migration(dry_run: bool = False):
             edge_count = (await result.single())["count"]
             logger.info("Found %d relationships with source_paper_id missing config_id.", edge_count)
 
-            if not dry_run and edge_count > 0:
+            # Always print counts of nodes/edges that would change
+            print("\n" + "=" * 70)
+            print("MIGRATION SUMMARY COUNTS")
+            print("=" * 70)
+            print(f"Semantic entity nodes total:       {len(nodes)}")
+            print(f"Semantic entity nodes to update:   {len(nodes_to_update)}")
+            print(f"Relationships to update:           {edge_count}")
+            print("=" * 70)
+
+            # 3. Always generate & print DUPLICATE REPORT
+            dup_cypher = """
+                MATCH (n)
+                WHERE any(lbl IN labels(n) WHERE lbl IN $labels)
+                OPTIONAL MATCH (n)-[r]-()
+                WITH n, count(r) AS degree
+                WITH coalesce(n.norm_name, toLower(trim(n.name))) AS norm_name,
+                     coalesce(n.config_id, 'default') AS config_id,
+                     collect({name: n.name, labels: labels(n), degree: degree}) AS nodes,
+                     count(n) AS group_size
+                WHERE group_size > 1
+                RETURN norm_name, config_id, group_size, nodes
+                ORDER BY group_size DESC, norm_name ASC
+                LIMIT 30
+            """
+            dup_result = await session.run(dup_cypher, labels=SEMANTIC_ENTITY_LABELS)
+            dup_groups = [record async for record in dup_result]
+
+            print("\n" + "=" * 70)
+            print("DUPLICATE REPORT: Groups sharing (norm_name, config_id) [Top 30]")
+            print("=" * 70)
+            if not dup_groups:
+                print("No duplicate entity nodes found.")
+            else:
+                for idx, grp in enumerate(dup_groups, 1):
+                    print(f"Group #{idx}: norm_name='{grp['norm_name']}', config_id='{grp['config_id']}' (count={grp['group_size']})")
+                    for node_info in grp["nodes"]:
+                        lbls = [l for l in node_info["labels"] if l != "Entity"]
+                        print(f"   - name: {node_info['name']!r:30} labels: {lbls}  degree: {node_info['degree']}")
+            print("=" * 70 + "\n")
+
+            if not apply:
+                print("[DRY-RUN] No changes written to database. Run with --apply to execute migration.\n")
+                return
+
+            # Apply updates if requested
+            logger.info("Applying migration changes...")
+
+            migrated_nodes = 0
+            for record in nodes:
+                raw_name = record["name"] or ""
+                normalized = norm_name(raw_name)
+                lbls = record["lbls"]
+                is_metric = "Metric" in lbls
+
+                metric_params = {}
+                if is_metric and raw_name:
+                    m_name, val, is_pct = parse_metric(raw_name)
+                    metric_params = {
+                        "metric_name": m_name,
+                        "metric_value": val,
+                        "is_percent": is_pct,
+                    }
+
+                update_cypher = """
+                    MATCH (n) WHERE elementId(n) = $eid
+                    SET n:Entity,
+                        n.config_id = coalesce(n.config_id, 'default'),
+                        n.norm_name = coalesce(n.norm_name, $norm)
+                """
+                if metric_params:
+                    update_cypher += """
+                        SET n.metric_name = coalesce(n.metric_name, $metric_name),
+                            n.value       = coalesce(n.value, $metric_value),
+                            n.is_percent  = coalesce(n.is_percent, $is_percent)
+                    """
+
+                await session.run(
+                    update_cypher,
+                    eid=record["eid"],
+                    norm=normalized,
+                    **metric_params,
+                )
+                migrated_nodes += 1
+
+            logger.info("Migrated %d entity nodes with :Entity, norm_name, and config_id='default'.", migrated_nodes)
+
+            if edge_count > 0:
                 update_edges_cypher = """
                     MATCH ()-[r]->()
                     WHERE r.source_paper_id IS NOT NULL AND r.config_id IS NULL
@@ -129,13 +177,11 @@ async def run_migration(dry_run: bool = False):
                 updated_edges = (await res.single())["count"]
                 logger.info("Set config_id='default' on %d relationships.", updated_edges)
 
-            # 3. Ensure composite index exists
-            if not dry_run:
-                index_cypher = "CREATE INDEX entity_norm_config IF NOT EXISTS FOR (n:Entity) ON (n.norm_name, n.config_id)"
-                await session.run(index_cypher)
-                logger.info("Ensured index entity_norm_config exists.")
+            index_cypher = "CREATE INDEX entity_norm_config IF NOT EXISTS FOR (n:Entity) ON (n.norm_name, n.config_id)"
+            await session.run(index_cypher)
+            logger.info("Ensured index entity_norm_config exists.")
 
-            logger.info("Migration completed successfully (dry_run=%s).", dry_run)
+            logger.info("Migration completed successfully (apply=True).")
     finally:
         await driver.close()
 
@@ -143,11 +189,13 @@ async def run_migration(dry_run: bool = False):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Migrate Neo4j nodes and edges for config_id namespacing.")
-    parser.add_argument("--dry-run", action="store_true", help="Report counts without modifying the database.")
+    parser.add_argument("--apply", action="store_true", help="Apply migration changes to Neo4j. By default, runs in dry-run mode.")
     args = parser.parse_args()
 
+    mode_str = "APPLY (CHANGES WILL BE WRITTEN)" if args.apply else "DRY-RUN (NO CHANGES WILL BE WRITTEN)"
     print("=" * 70)
-    print("WARNING: This will update existing Neo4j nodes and edges.")
-    print("Run with --dry-run to preview changes.")
+    print(f"Neo4j Migration - Mode: {mode_str}")
+    if not args.apply:
+        print("Run with --apply to apply changes to the database.")
     print("=" * 70)
-    asyncio.run(run_migration(dry_run=args.dry_run))
+    asyncio.run(run_migration(apply=args.apply))
