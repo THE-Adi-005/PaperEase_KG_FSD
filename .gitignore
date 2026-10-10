@@ -30,3 +30,9 @@ Thumbs.db
 
 # Neo4j local
 neo4j_data/
+
+# Eval cache, logs, and large binaries
+results/*.sqlite*
+results/logs/
+results/*.pkl
+

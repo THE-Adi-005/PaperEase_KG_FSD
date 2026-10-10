@@ -23,6 +23,8 @@ logger = logging.getLogger("extract_cache")
 
 async def get_sections_from_neo4j(paper_ids: list[str] | None = None) -> list[dict]:
     """Fetch sections for given paper_ids or all papers from Neo4j."""
+    if neo4j_service.driver is None:
+        await neo4j_service.connect()
     async with neo4j_service.driver.session() as session:
         if paper_ids:
             query = """
@@ -169,6 +171,9 @@ async def main():
         print(f"Full job total calls:         {full_job_calls} ({len(valid_sections)} sections x {args.runs} runs)")
         print(f"Estimated full job runtime:   {estimated_total_sec:.1f}s (~{est_min:.1f} minutes)")
         print("=" * 65 + "\n")
+
+    if neo4j_service.driver:
+        await neo4j_service.close()
 
 
 if __name__ == "__main__":
