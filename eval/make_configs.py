@@ -136,12 +136,6 @@ def generate_configs() -> list[str]:
     dump_yaml(c_dyn, CONFIGS_DIR / "cfg_dyn_on.yaml")
     created.append("cfg_dyn_on")
 
-    # 6. Tables
-    c_notables = copy.deepcopy(BASE_CONFIG)
-    c_notables["config_id"] = "cfg_no_tables"
-    c_notables["include_tables"] = False
-    dump_yaml(c_notables, CONFIGS_DIR / "cfg_no_tables.yaml")
-    created.append("cfg_no_tables")
 
     # 7. Same_as
     c_sa_off = copy.deepcopy(BASE_CONFIG)

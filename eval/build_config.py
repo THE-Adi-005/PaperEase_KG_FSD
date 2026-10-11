@@ -21,6 +21,7 @@ from app.services.embeddings import embedding_service
 from app.services.kg_builder import filter_runs
 from app.services.neo4j_client import neo4j_service
 from eval.cache import get_runs, get_table_triples
+from eval.corpus import get_eval_papers
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("build_config")
@@ -30,6 +31,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 async def fetch_paper_sections(paper_filter: str | list[str] | None = None) -> list[dict]:
     """Fetch sections for specified papers from Neo4j."""
+    if paper_filter == "all":
+        paper_filter = get_eval_papers()
     async with neo4j_service.driver.session() as session:
         if isinstance(paper_filter, list):
             query = """
@@ -99,7 +102,12 @@ async def build_config(cfg: dict) -> dict:
     await neo4j_service.delete_config(config_id)
 
     # Step 2: Fetch target sections
-    paper_filter = papers_cfg if isinstance(papers_cfg, list) else None
+    if papers_cfg == "all":
+        paper_filter = get_eval_papers()
+    elif isinstance(papers_cfg, list):
+        paper_filter = papers_cfg
+    else:
+        paper_filter = None
     sections = await fetch_paper_sections(paper_filter)
     valid_sections = [s for s in sections if s["text"] and len(s["text"].strip()) >= 50]
     logger.info("Loaded %d sections (%d valid).", len(sections), len(valid_sections))
