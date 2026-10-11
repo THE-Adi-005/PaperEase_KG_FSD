@@ -64,3 +64,34 @@ def test_parse_json_array():
     with pytest.raises(ValueError, match="No valid JSON array or objects found"):
         llm_client._parse_json_array("")
 
+
+def test_clean_empty_cache(tmp_db):
+    from eval.clean_empty import clean_empty_cache
+
+    # Insert non-empty and empty runs
+    put_run("p1", "s1", 0, "R3", 3000, 0.6, "m1", [{"head": "A", "relation": "B", "tail": "C"}], db_path=tmp_db)
+    put_run("p1", "s2", 0, "R3", 3000, 0.6, "m1", [], db_path=tmp_db)
+    put_run("p1", "s3", 0, "R10", 3000, 0.6, "m1", [], db_path=tmp_db)
+    put_run("p1", "s4", 0, "R10", 3000, 0.6, "m1", [{"head": "D", "relation": "E", "tail": "F"}], db_path=tmp_db)
+
+    # Dry-run
+    res_dry = clean_empty_cache(profiles=["R3", "R10"], apply=False, db_path=tmp_db)
+    assert res_dry["R3"]["empty_found"] == 1
+    assert res_dry["R3"]["deleted"] == 0
+    assert res_dry["R3"]["total_after"] == 2
+    assert res_dry["R10"]["empty_found"] == 1
+    assert res_dry["R10"]["deleted"] == 0
+
+    # Apply
+    res_apply = clean_empty_cache(profiles=["R3", "R10"], apply=True, db_path=tmp_db)
+    assert res_apply["R3"]["deleted"] == 1
+    assert res_apply["R3"]["total_after"] == 1
+    assert res_apply["R10"]["deleted"] == 1
+    assert res_apply["R10"]["total_after"] == 1
+
+    # Verify R3 remaining is the non-empty one
+    runs = get_runs("p1", "s1", "R3", 3000, 0.6, "m1", db_path=tmp_db)
+    assert len(runs) == 1
+    assert has_run("p1", "s2", 0, "R3", 3000, 0.6, "m1", db_path=tmp_db) is False
+
+
