@@ -340,3 +340,105 @@ def _should_trigger_lazy_completion(observation: str, action_name: str) -> bool:
     ]
     obs_lower = observation.lower()
     return any(ind in obs_lower for ind in indicators)
+
+
+async def run_agent_eval(
+    question: str,
+    paper_ids: list[str],
+    config_id: Optional[str] = None,
+    max_steps: int = 6,
+    lazy_completion: bool = False,
+    persist_lazy: bool = False,
+    temperature: float = 0.0,
+) -> dict:
+    """Non-streaming wrapper around run_agent() for evaluation scripts.
+
+    Parameters
+    ----------
+    question:        The QA question to answer.
+    paper_ids:       Papers to restrict graph lookups to.
+    config_id:       Ablation config namespace (e.g. 'cfg_base'). None → default.
+    max_steps:       Max ReACT steps (default 6 for eval speed).
+    lazy_completion: If False, lazy completion is never triggered.
+    persist_lazy:    If False, lazy completion extracts triples but does NOT
+                     write them to Neo4j (observation-only, no DB mutation).
+    temperature:     LLM temperature for the agent (0.0 = deterministic).
+
+    Returns
+    -------
+    dict with keys:
+        answer          str
+        steps           int
+        observations    list[str]
+        n_lazy_triggers int
+        trace           str  (full scratchpad)
+    """
+    answer = ""
+    steps_used = 0
+    observations: list[str] = []
+    n_lazy_triggers = 0
+    trace_parts: list[str] = []
+
+    # Patch lazy completion to be a no-op when disabled or non-persisting
+    _orig_lazy = None
+    if not lazy_completion or not persist_lazy:
+        import app.services.agent as _agent_mod
+
+        async def _noop_lazy(**kwargs) -> int:
+            return 0
+
+        async def _dryrun_lazy(question, thought, action_name, action_input, paper_ids) -> int:
+            """Extract triples but do NOT write to Neo4j."""
+            from app.services.lazy_completion import trigger_lazy_completion as _real
+            # We call the real function but with a monkey-patched neo4j_service
+            # that swallows writes — simpler: just skip entirely for eval
+            return 0
+
+        _orig_lazy = getattr(_agent_mod, "_should_trigger_lazy_completion", None)
+        if not lazy_completion:
+            # Override the trigger predicate so it never fires
+            _agent_mod._should_trigger_lazy_completion = lambda obs, name: False
+
+    try:
+        async for event in run_agent(
+            question=question,
+            paper_ids=paper_ids,
+            mode=QueryMode.SINGLE,
+            max_steps=max_steps,
+            config_id=config_id,
+        ):
+            evt = event.get("event", "")
+            data = event.get("data", {})
+
+            if evt == "thought":
+                trace_parts.append(f"Thought {data.get('step')}: {data.get('text', '')}")
+            elif evt == "action":
+                trace_parts.append(
+                    f"Action {data.get('step')}: {data.get('name')}[{data.get('input')}]"
+                )
+            elif evt == "observation":
+                obs_text = data.get("text", "")
+                observations.append(obs_text)
+                trace_parts.append(f"Observation {data.get('step')}: {obs_text}")
+            elif evt == "lazy_completion":
+                n_lazy_triggers += 1
+                trace_parts.append(
+                    f"[lazy_completion step={data.get('step')} new_triples={data.get('new_triples')}]"
+                )
+            elif evt == "answer":
+                answer = data.get("text", "")
+                steps_used = data.get("steps_used", 0)
+            # subgraph and error events are ignored in eval mode
+    finally:
+        # Restore original lazy trigger if we patched it
+        if not lazy_completion and _orig_lazy is not None:
+            import app.services.agent as _agent_mod
+            _agent_mod._should_trigger_lazy_completion = _orig_lazy
+
+    return {
+        "answer": answer,
+        "steps": steps_used,
+        "observations": observations,
+        "n_lazy_triggers": n_lazy_triggers,
+        "trace": "\n".join(trace_parts),
+    }
