@@ -9,6 +9,7 @@ import FigurePanel from './components/FigurePanel';
 import DemoPanel from './components/DemoPanel';
 import DualComparison from './components/DualComparison';
 import ArchitecturePanel from './components/ArchitecturePanel';
+import ExperimentsPanel from './components/ExperimentsPanel';
 import { useSSE } from './hooks/useSSE';
 import { getPapers, getPaperFigures, getPaperTables, queryPapers, queryNaive, comparePapers } from './utils/api';
 
@@ -242,6 +243,12 @@ export default function App() {
             >
               Architecture & Metrics
             </button>
+            <button
+              className={`panel-tab ${rightTab === 'experiments' ? 'active' : ''}`}
+              onClick={() => setRightTab('experiments')}
+            >
+              Experiments & Ablations
+            </button>
           </div>
 
           <div className="panel-content" style={{ padding: rightTab === 'graph' ? 0 : undefined }}>
@@ -253,6 +260,9 @@ export default function App() {
             )}
             {rightTab === 'architecture' && (
               <ArchitecturePanel />
+            )}
+            {rightTab === 'experiments' && (
+              <ExperimentsPanel />
             )}
           </div>
         </aside>
