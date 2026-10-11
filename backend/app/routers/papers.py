@@ -59,10 +59,13 @@ async def list_papers():
     """List all papers with their ingestion status."""
     papers = await neo4j_service.list_papers()
 
+    # Filter out empty or phantom nodes
+    papers = [p for p in papers if p.id and p.id.strip() and p.title and p.title.strip() and (p.section_count or 0) > 0]
+
     # Add papers still being ingested (not yet in Neo4j)
     known_ids = {p.id for p in papers}
     for pid, info in _ingestion_status.items():
-        if pid not in known_ids:
+        if pid not in known_ids and info.get("filename"):
             papers.append(PaperInfo(
                 id=pid,
                 title=info.get("filename", pid),

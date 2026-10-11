@@ -1,0 +1,78 @@
+\chapter{EXISTING SYSTEM AND DOMAIN STUDY}
+
+\section{Existing System}
+In current academic and enterprise workflows, literature question answering and scientific document inspection rely primarily on three existing paradigms:
+\begin{enumerate}
+    \item \textbf{Commercial General-Purpose LLMs (Direct Zero-Shot Generation):} Systems such as ChatGPT (OpenAI), Claude (Anthropic), and Gemini (Google) possess extensive parametric pretraining over web-scraped scientific corpora. When users input a literature query (e.g., \textit{"What BLEU score did Transformer Big achieve on WMT English-to-German?"}), these models generate answers based entirely on their internal weight matrices without dynamically reading the primary PDF document.
+    \item \textbf{Standard Dense Vector Retrieval-Augmented Generation (Vector RAG):} Systems like LangChain RAG, LlamaIndex VectorStoreIndex, and commercial PDF assistants (e.g., ChatPDF, Consensus, Semantic Scholar Semantic Reader) index PDFs by chunking text into 500-token blocks, calculating dense vector embeddings using models such as Sentence-Transformers or OpenAI text-embedding-ada-002, storing them in vector databases (e.g., FAISS, Chroma, Pinecone), and passing top-$k$ similar text passages into an LLM context prompt.
+    \item \textbf{Unconstrained / Open-IE Graph RAG:} Early Graph-RAG architectures (such as Microsoft GraphRAG and vanilla LangChain GraphQA) use Open Information Extraction (Open-IE) prompts where an LLM extracts arbitrary subject-predicate-object triples from text without an underlying ontology or schema constraint. Queries are converted into Cypher or traversed using generic BFS/DFS graph exploration algorithms.
+\end{enumerate}
+
+\section{Limitations of Existing System}
+Each of the existing paradigms exhibits fundamental technical limitations that prevent reliable scientific research assistance:
+
+\subsection{Deficiencies of Direct Zero-Shot LLMs}
+\begin{itemize}
+    \item \textbf{Hallucination on Empirical Metrics:} Zero-shot LLMs frequently hallucinate plausible-looking numbers. For example, when queried on specific ablation rows or secondary benchmark datasets, models generate fabricated numerical values with high linguistic confidence.
+    \item \textbf{Lack of Provenance and Auditability:} Outputs cannot be traced back to a specific page, paragraph, or table cell. The user has no mechanism to verify the claim without manually opening the PDF and searching manually.
+    \item \textbf{Temporal Stagnation:} Direct LLMs are frozen at their pretraining cutoff date and cannot absorb newly uploaded preprints or revised camera-ready versions without expensive retraining or fine-tuning.
+\end{itemize}
+
+\subsection{Deficiencies of Standard Vector RAG}
+\begin{itemize}
+    \item \textbf{Chunk Boundary Truncation of Tabular Data:} Academic papers present their most crucial factual findings in dense, multi-column LaTeX tables (such as Table 1 in Vaswani et al. 2017 or Table 2 in Devlin et al. 2018). When vector chunking splits a table into multiple 512-token chunks, column headers are separated from data cells. As a result, dense vector embeddings fail to match multi-row aggregation queries (e.g., \textit{"How many attention heads are used across each layer in Transformer Base vs Transformer Big?"}).
+    \item \textbf{Inability to Perform Multi-Hop Relational Traversal:} Answering multi-hop queries requires chaining multiple discrete facts across different sections of a paper. Vector similarity retrieves chunks that are lexically or semantically similar to the query string, but cannot perform directed transitive leaps:
+    \begin{equation}
+        (\text{Paper}) \xrightarrow{\text{USES\_METHOD}} (\text{Method}) \xrightarrow{\text{APPLIES\_TECHNIQUE}} (\text{Subcomponent}) \xrightarrow{\text{REPORTS\_METRIC}} (\text{Result})
+    \end{equation}
+    Because intermediate entities may have low direct lexical similarity to the user's initial prompt, standard top-$k$ retrieval drops essential connective chunks.
+    \item \textbf{Cross-Document Isolation:} When a query requires comparing two distinct papers (e.g., contrasting the pretraining token count of GPT-1 with RoBERTa), vector search retrieves isolated paragraphs from both documents into an unstructured context window. The LLM must infer cross-document relationships without explicit alignment, frequently mixing up model attributes or failing to reconcile conflicting naming conventions.
+    \item \textbf{Spurious Responses on Unanswerable Queries:} When a user asks about a property not evaluated in the paper (e.g., \textit{"Does the original Transformer paper evaluate on SQuAD question answering?"}), vector RAG retrieves chunks that mention translation evaluation or SQuAD in related work, leading the generator to falsely claim that the model was evaluated on SQuAD rather than truthfully abstaining.
+\end{itemize}
+
+\subsection{Deficiencies of Unconstrained Open-IE Graph RAG}
+\begin{itemize}
+    \item \textbf{Synonym Relation Drift and Path Explosion:} Without strict schema constraints, Open-IE extraction produces dozens of redundant relation labels for the same conceptual link (e.g., \texttt{EVALUATED\_ON}, \texttt{TESTED\_ON}, \texttt{BENCHMARKED\_AGAINST}, \texttt{RUN\_ON}, \texttt{MEASURED\_ON}). When an agent executes graph traversal, it encounters high-degree hub nodes and unconstrained relation drift, causing search latency to explode past 10–12 seconds and degrading accuracy.
+    \item \textbf{Extraction Noise Accumulation:} LLM-based triple extraction on single passes frequently generates spurious entity links based on metaphorical or passing textual mentions. Without multi-pass verification, noise accumulates exponentially in the graph.
+\end{itemize}
+
+\section{Existing Technologies / Approaches}
+A comparative analysis of existing technologies reveals their architectural trade-offs:
+\begin{table}[h]
+\centering
+\caption{Comparison of Existing Literature Q\&A Architectures vs. Proposed Approach}
+\label{tab:existing_tech_comp}
+\small
+\begin{tabular}{p{3.2cm}p{2.8cm}p{3.2cm}p{4.2cm}}
+\toprule
+\textbf{Approach} & \textbf{Data Structure} & \textbf{Retrieval Mechanism} & \textbf{Key Failure Mode} \\
+\midrule
+Direct LLM (Zero-Shot) & Parametric Weights & Transformer Attention over Prompt & Hallucination; zero document grounding; memorization void. \\
+\midrule
+Standard Vector RAG & Dense Flat Chunks & Cosine Similarity over Neural Embeddings & Table coordinate loss; chunk boundary truncation; multi-hop failure. \\
+\midrule
+Naive Open-IE Graph RAG & Unconstrained Triples & BFS / DFS over Dynamic Predicates & Relation drift; 35+ synonym labels; high search latency ($>10$s). \\
+\midrule
+\textbf{Our Proposed Platform} & \textbf{Schema AST Property Graph ($R_7$)} & \textbf{Cypher AST Traversal + 50\% Majority Vote} & \textbf{Eliminates chunk truncation; 100\% provenance fidelity; safe abstention.} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Proposed Improvement}
+To overcome these systemic limitations, our proposed project implements five fundamental architectural improvements:
+\begin{enumerate}
+    \item \textbf{Schema-Constrained Graph Formulation ($R_7$):} We replace unconstrained open relation extraction with a strictly typed scientific ontology defining 7 core relation types (\texttt{USES\_METHOD}, \texttt{EVALUATED\_ON}, \texttt{REPORTS\_METRIC}, \texttt{CONTRASTED\_WITH}, \texttt{EXTENDS}, \texttt{CONTAINS\_TABLE}, \texttt{SAME\_AS}) and typed entity nodes. This eliminates relation synonym drift and ensures deterministic graph traversal.
+    \item \textbf{Multi-Run Consensus Voting Filter:} We introduce a majority-voting consensus mechanism that requires extracted relation edges to be corroborated across repeated, independent extraction passes ($K=20, V=50\%$). Low-confidence, spurious edges are pruned, preserving a clean, high-precision knowledge core.
+    \item \textbf{Tabular and Structural Parsing Ingestion:} We treat academic tables as primary first-class entities. Rather than flattening tables into unstructured text, our ingestion engine parses Markdown and LaTeX coordinate grids into structured \texttt{Table} and \texttt{Result} nodes, enabling exact Cypher numerical aggregation across rows and columns.
+    \item \textbf{Cross-Paper Entity Resolution via SAME\_AS Links:} Canonical entity nodes (such as the \texttt{BooksCorpus} dataset or the \texttt{GLUE} benchmark) are mapped across publications using explicit \texttt{SAME\_AS} equivalence links, allowing multi-agent reasoners to seamlessly jump across document boundaries during comparative cross-paper queries.
+    \item \textbf{Full-Stack Multi-Model Evaluation Arena:} We develop a modern, production-grade web application featuring a simultaneous 4-model evaluation arena that runs Direct LLM, Vector RAG, Naive KG, and Our Proposed Agent side-by-side, calculating automated, authentic evaluation metrics (EM, Token F1, BLEU, Cosine, BERTScore) against verified ground truth.
+\end{enumerate}
+
+\section{Novelty and Key Contribution}
+The novelty of our implemented system is specific, grounded, and demonstrably distinct from existing solutions:
+\begin{itemize}
+    \item \textbf{Schema AST Cypher Generation with Guardrails:} Unlike black-box vector search, our agent compiles natural language queries into verified Cypher Abstract Syntax Trees (ASTs) that enforce ontology constraints, ensuring that every traversed edge adheres to the defined scientific schema.
+    \item \textbf{Truthful Abstention Mechanism on Unanswerable Queries:} When a queried fact or parameter does not exist in the scientific literature, our agent verifies the absence of an explicit relational path in the graph and safely abstains from generating text (achieving an 87.5\% truthful abstention rate, compared to 0.0\% for Direct LLM and 25.0\% for Vector RAG).
+    \item \textbf{Empirical 100-Question Multi-Tier Benchmark:} We have constructed and released the first 100-question comprehensive evaluation benchmark across 10 foundational NLP papers, uniquely stratified across five distinct cognitive tiers (Lookup, Multi-hop, Aggregation, Cross-paper, and Paragraph-level Long Synthesis).
+    \item \textbf{End-to-End Full-Stack System Integration:} The project delivers a fully integrated, working application combining a React 18 frontend with interactive Cytoscape graph rendering, a FastAPI asynchronous server with Server-Sent Events (SSE) streaming, a live Neo4j database instance (1,546 nodes, 1,634 edges), and local/hosted LLM orchestration.
+\end{itemize}

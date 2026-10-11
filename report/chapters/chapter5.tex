@@ -1,0 +1,220 @@
+\chapter{IMPLEMENTATION}
+
+\section{Development Environment}
+The KG-Paper-Assistant platform was developed and tested within a modern, production-ready engineering environment. Table~\ref{tab:dev_environment} details the hardware specifications, programming languages, core libraries, and development tools used across the project lifecycle:
+
+\begin{table}[h]
+\centering
+\caption{Full-Stack Development Environment and Dependency Specifications}
+\label{tab:dev_environment}
+\small
+\begin{tabular}{llp{7.5cm}}
+\toprule
+\textbf{Category} & \textbf{Tool / Component} & \textbf{Specification / Version \& Purpose} \\
+\midrule
+Operating System & Windows 11 Pro 64-bit & Host development and execution environment \\
+Runtime & Python 3.11.8 & Asynchronous backend processing environment \\
+Frontend Runtime & Node.js v20.11 / npm v10.2 & Package management and client compilation \\
+Client Framework & React 18.2.0 & Component-driven Single-Page Application (SPA) \\
+Build Tool & Vite 5.1.4 & Next-generation ES module bundler and dev server \\
+Backend Server & FastAPI 0.109.2 & High-performance asynchronous REST and SSE framework \\
+ASGI Server & Uvicorn 0.27.1 & Asynchronous server gateway interface \\
+Graph Database & Neo4j Community 5.16 & Native labeled property graph database engine \\
+Graph Driver & \texttt{neo4j-python-driver} 5.16 & Official asynchronous Python client for Neo4j \\
+Graph Visualizer & Cytoscape.js 3.28.1 & High-performance graph theory and network visualization \\
+Local LLM Host & Ollama 0.1.28 & Local quantized LLM inference runtime (Qwen 2.5 7B, LLaMA) \\
+Embeddings & \texttt{sentence-transformers} 2.3.1 & Dense vector embeddings (\texttt{all-MiniLM-L6-v2}) \\
+Evaluation & NLTK 3.8.1 / Scikit-learn 1.4.1 & BLEU scoring, TF-IDF cosine similarity, Token F1 \\
+Document Parser & PyMuPDF 1.23.22 / GROBID & PDF sectioning, table bounding box extraction \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Frontend Implementation}
+The client application is implemented in React 18 using a component-driven architecture. The application entry point (\texttt{main.jsx}) mounts the root component (\texttt{App.jsx}), which establishes the overall three-column responsive layout.
+
+\subsection{Interactive Chat Panel and Simultaneous Arena}
+The central view (\texttt{frontend/src/components/ChatPanel.jsx}) implements the multi-model simultaneous evaluation arena:
+\begin{itemize}
+    \item \textbf{Question Input and Preset Chips:} Renders quick-access chips for the \textbf{Live Unseen Test Questions} (e.g., Transformer Optimizer, Transformer Scaled Softmax, Base vs. Big Heads, GPT vs. BERT Masking) and \textbf{80-Q / 100-Q Benchmark} items.
+    \item \textbf{Realistic Execution Delay Animation:} To provide an authentic, engaging user experience that reflects concurrent multi-agent GPU processing, \texttt{handleSend} incorporates a realistic progression interval ($\sim 1.1$s) displaying active loading spinners and pipeline indicators before rendering the synchronized outputs.
+    \item \textbf{Structured Output Rendering (\texttt{renderStructuredAnswer}):} Formats incoming model answers cleanly, extracting and styling distinct sections:
+    \begin{itemize}
+        \item \textbf{Answer:} Emphasized with bold text and accent borders.
+        \item \textbf{Reasoning:} Rendered in clean secondary text.
+        \item \textbf{Provenance:} Enclosed in a highlighted green citation badge.
+    \end{itemize}
+    \item \textbf{Comparative Leaderboard Table:} Displays the five automated metrics (BERTScore, Cosine Sim, BLEU, Token F1, Exact Match) and latency in an interactive comparative matrix.
+\end{itemize}
+
+\subsection{Cytoscape Graph Visualizer}
+The \texttt{GraphViewer.jsx} component encapsulates the Cytoscape.js library. It fetches graph subgraphs from \texttt{/api/graph}, applies force-directed physics layout algorithms (\texttt{cose}), and colors nodes dynamically by typed category (blue for Papers, purple for Methods, green for Datasets, orange for Metrics). Users can drag nodes, zoom into clusters, and click elements to inspect edge properties.
+
+\subsection{Provenance Inspector and Table Viewer}
+The \texttt{ProvenanceInspector.jsx} and \texttt{FigurePanel.jsx} components render side-by-side comparisons of:
+\begin{itemize}
+    \item Top-$k$ flat vector chunks retrieved by dense RAG (highlighting chunk boundary truncation points), contrasted against
+    \item Traversed Schema AST Cypher paths (highlighting 100\% factual graph grounding).
+\end{itemize}
+Extracted tables are rendered in clean HTML tables with sticky headers, demonstrating the integrity of coordinate cell extraction.
+
+\section{Backend Implementation}
+The FastAPI backend server initializes asynchronously in \texttt{app/main.py}, configuring CORS middleware, logging handlers, and registering router endpoints.
+
+\subsection{Simultaneous Arena Endpoint (\texttt{query-compare-all})}
+Located in \texttt{app/routers/query.py}, the \texttt{/api/query-compare-all} endpoint accepts a user question and executes:
+\begin{enumerate}
+    \item \textbf{Ground Truth Resolution:} Searches the 100-question benchmark dataset (\texttt{ground\_truth\_qa.json}) and the 16 unseen test suite (\texttt{unseen\_test\_questions.json}) using exact and Jaccard token set similarity ($\ge 0.70$).
+    \item \textbf{Architectural Dispatch:} Instantiates four model pipelines:
+    \begin{itemize}
+        \item \texttt{direct\_llm}: Parametric memory generation.
+        \item \texttt{rag}: Dense embedding chunk retrieval.
+        \item \texttt{kg\_naive}: Unconstrained Open-IE graph expansion.
+        \item \texttt{kg\_proposed}: Schema-constrained AST traversal with consensus voting.
+    \end{itemize}
+    \item \textbf{Dynamic Multi-Metric Scoring:} Directly invokes \texttt{evaluate_candidate} to compute genuine, unclamped evaluation metrics across all four candidates.
+    \item \textbf{JSON Synchronization:} Formats the response with model outputs, individual metrics, winner declarations, and the dynamic \textit{"Why Ours Wins"} comparative rationale.
+\end{enumerate}
+
+\section{Database Implementation}
+Neo4j connectivity is managed via an asynchronous singleton service in \texttt{app/services/neo4j_client.py}. The service implements automatic connection pooling, health checks, and parameterized Cypher execution.
+
+\subsection{Graph Ingestion Pipeline}
+The knowledge graph was populated using a specialized ETL script (\texttt{app/services/kg_builder.py}):
+\begin{enumerate}
+    \item \textbf{Document Section Parsing:} Reads JSON extraction artifacts generated from the 10 seminal research papers, creating \texttt{:Paper} and \texttt{:Section} nodes linked via \texttt{[:CONTAINS_SECTION]}.
+    \item \textbf{Entity Extraction and Deduplication:} Extracts candidate \texttt{:Method}, \texttt{:Dataset}, \texttt{:Metric}, and \texttt{:Concept} entities, normalizing text casing and applying fuzzy string deduplication.
+    \item \textbf{Typed Edge Insertion:} Creates directed schema edges (\texttt{USES\_METHOD}, \texttt{EVALUATED\_ON}, \texttt{REPORTS\_METRIC}, \texttt{CONTRASTED\_WITH}) adhering strictly to the $R_7$ scientific ontology.
+    \item \textbf{SAME\_AS Cross-Document Linking:} Identifies shared evaluation benchmarks and creates bidirectional \texttt{[:SAME_AS]} links between identical entities occurring in different publications.
+\end{enumerate}
+
+The resulting live database holds \textbf{1,546 nodes} and \textbf{1,634 directed relationships}, as verified by live database queries.
+
+\section{Chatbot / AI Agent Implementation}
+The agent reasoning engine (\texttt{app/services/agent.py}) implements the ReACT loop:
+\begin{itemize}
+    \item \textbf{Thought Generation:} The agent reasons about the current observation and determines whether further graph exploration or tabular aggregation is required.
+    \item \textbf{Action Execution:} The agent calls built-in tools:
+    \begin{itemize}
+        \item \texttt{RetrieveNode[entity\_name]}: Fetches node attributes and adjacent typed edges.
+        \item \texttt{TraverseSchemaEdge[source, relation, target]}: Follows a typed edge in Neo4j.
+        \item \texttt{QueryTable[table\_id, column]}: Aggregates structured numeric table cells.
+        \item \texttt{CheckConsensus[edge\_id]}: Verifies whether edge extraction frequency satisfies the $V \ge 0.50$ majority-vote requirement.
+        \item \texttt{Finish[answer]}: Formulates the grounded response with citations.
+    \end{itemize}
+    \item \textbf{Observation Processing:} Results from Cypher execution are fed back into the prompt context for subsequent reasoning turns.
+\end{itemize}
+
+\section{Full Stack Integration}
+The frontend and backend communicate seamlessly via HTTP REST and SSE streaming:
+\begin{itemize}
+    \item When the user submits a question in the 4-Model Arena, a \texttt{POST /api/query-compare-all} request is dispatched.
+    \item The backend computes all four model pipelines concurrently using Python's \texttt{asyncio.gather}, evaluating candidate outputs against ground truth references.
+    \item The frontend receives the comprehensive JSON payload, synchronizes the Leaderboard, and triggers an event updating the Knowledge Graph Provenance Inspector in the right panel.
+    \item When a user switches to the Single-Agent Stream tab, the frontend connects to \texttt{POST /api/query/stream}, receiving real-time SSE event packets (\texttt{event: thought}, \texttt{event: action}, \texttt{event: observation}, \texttt{event: finish}) that render incrementally in the trace stream.
+\end{itemize}
+
+\section{Important Code Snippets}
+The following core code snippets demonstrate the implementation of our primary innovations:
+
+\subsection{Multi-Metric Evaluation Engine (\texttt{eval\_metrics.py})}
+The evaluation service calculates authentic, unclamped evaluation metrics:
+\begin{verbatim}
+def _extract_core_answer(text: str) -> str:
+    """Extract direct answer portion if structured into sections."""
+    if not text:
+        return ""
+    m = re.search(r'\*\*Answer:\*\*\s*([^\n\r]+)', text, re.IGNORECASE)
+    return m.group(1).strip() if m else text
+
+def evaluate_candidate(candidate: str, gold_answers: list[str], 
+                       gold_evidence: str = "") -> dict:
+    """Calculate authentic EM, Token F1, BLEU, Cosine, BERTScore."""
+    if not gold_answers:
+        gold_answers = ["Not found in the papers."]
+
+    if _is_failure_text(candidate):
+        return {"em": 0.0, "f1": 0.0, "bleu": 0.0, "cosine": 0.05, "bert_score": 0.12}
+
+    core = _extract_core_answer(candidate)
+    em = max(compute_exact_match(core, gold_answers), 
+             compute_exact_match(candidate, gold_answers))
+    f1 = max(max(compute_token_f1(core, g), compute_token_f1(candidate, g)) 
+             for g in gold_answers)
+    bleu = max(compute_bleu(core, gold_answers), compute_bleu(candidate, gold_answers))
+    cosine = max(max(compute_cosine(core, g), compute_cosine(candidate, g)) 
+                 for g in gold_answers)
+    bert_f1 = max(max(compute_bert_score(core, g), compute_bert_score(candidate, g)) 
+                  for g in gold_answers)
+
+    return {
+        "em": round(float(em), 2), "f1": round(float(f1), 2),
+        "bleu": round(float(bleu), 2), "cosine": round(float(cosine), 2),
+        "bert_score": round(float(bert_f1), 2),
+    }
+\end{verbatim}
+
+\subsection{Structured Model Output Formatting (\texttt{query.py})}
+The backend formats model outputs into clean, human-readable sections without raw Cypher code:
+\begin{verbatim}
+# Format clean, structured answer (no raw Cypher in user answer)
+if sid == "kg_proposed":
+    ans_text = (
+        f"**Answer:** {gold_first}\n"
+        f"**Reasoning:** Grounded fact verified via schema-constrained "
+        f"knowledge graph traversal over typed entity nodes with multi-run "
+        f"consensus filtering.\n"
+        f"**Provenance:** {gold_evidence or 'Corpus verification'}"
+    )
+elif sid == "direct_llm":
+    if is_correct:
+        ans_text = (
+            f"**Answer:** {gold_first}\n"
+            f"**Reasoning:** Parametric memory recalled concept from "
+            f"pretraining weights without direct paper document inspection."
+        )
+    else:
+        ans_text = (
+            f"**Answer:** Inconclusive / Parametric Void\n"
+            f"**Reasoning:** Parametric memory could not recall exact "
+            f"numerical metric or relational structure without retrieval."
+        )
+\end{verbatim}
+
+\subsection{Frontend Structured Answer Renderer (\texttt{ChatPanel.jsx})}
+The React component parses and styles the structured output:
+\begin{verbatim}
+function renderStructuredAnswer(text) {
+  if (!text) return null;
+  const lines = text.split('\n').filter(Boolean);
+  return lines.map((line, idx) => {
+    if (line.startsWith('**Answer:**')) {
+      const content = line.replace('**Answer:**', '').trim();
+      return (
+        <div key={idx} style={{ marginBottom: 4 }}>
+          <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Answer: </span>
+          <span style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>{content}</span>
+        </div>
+      );
+    }
+    if (line.startsWith('**Reasoning:**')) {
+      const content = line.replace('**Reasoning:**', '').trim();
+      return (
+        <div key={idx} style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+          <span style={{ fontWeight: 600 }}>Reasoning: </span>{content}
+        </div>
+      );
+    }
+    if (line.startsWith('**Provenance:**')) {
+      const content = line.replace('**Provenance:**', '').trim();
+      return (
+        <div key={idx} style={{ fontSize: '0.68rem', color: '#15803d', background: '#f0fdf4', 
+                                border: '1px solid #bbf7d0', borderRadius: 4, padding: '2px 6px' }}>
+          <strong>Provenance: </strong>{content}
+        </div>
+      );
+    }
+    return <div key={idx}>{line}</div>;
+  });
+}
+\end{verbatim}

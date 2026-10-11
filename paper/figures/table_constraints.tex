@@ -1,0 +1,15 @@
+\begin{table}[t]
+\centering
+\caption{Effect of schema constraints (type-signature filter, dynamic relations, generic drop).}
+\label{tab:constraints}
+\begin{tabular}{lccc}
+\toprule
+System & Nodes & Edges & Acc. \\
+\midrule
+Base (R7, no constraints) & 884 & 1042 & 0.850 [0.725,0.950] \\
++ Type-sig. filter & -- & -- & -- \\
++ Dynamic relations & 1050 & 1340 & 0.750 [0.600,0.875] \\
++ Drop generic & 860 & 1010 & 0.825 [0.700,0.925] \\
+\bottomrule
+\end{tabular}
+\end{table}

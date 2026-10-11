@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Share2 } from 'lucide-react';
+import { Share2, BookOpen } from 'lucide-react';
 import { checkHealth } from '../utils/api';
 
-export default function Header({ isDemoMode, setIsDemoMode }) {
+export default function Header({ onOpenCatalog }) {
   const [health, setHealth] = useState(null);
 
   useEffect(() => {
@@ -26,12 +26,14 @@ export default function Header({ isDemoMode, setIsDemoMode }) {
       
       <div className="header-status">
         <button 
-          className={`action-btn ${isDemoMode ? 'primary' : 'outline'}`}
-          onClick={() => setIsDemoMode(!isDemoMode)}
+          className="action-btn primary"
+          onClick={onOpenCatalog}
           style={{ marginRight: 16 }}
+          title="Browse & Run from 80 Gold Benchmark Questions"
         >
-          {isDemoMode ? 'Exit Demo' : '🎯 Demo Mode'}
+          <BookOpen size={14} /> 📋 Sample Questions (80)
         </button>
+
         <div className="status-dot">
           <div className={`dot ${health?.neo4j ? 'active' : ''}`} />
           Neo4j

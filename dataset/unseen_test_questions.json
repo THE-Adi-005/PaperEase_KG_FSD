@@ -1,0 +1,162 @@
+[
+  {
+    "id": "u01",
+    "type": "lookup",
+    "unseen": true,
+    "paper_ids": ["demo_attention_2017"],
+    "question": "What optimizer and learning rate schedule is used in the Attention Is All You Need paper?",
+    "gold_answers": ["Adam optimizer with beta1=0.9, beta2=0.98, and 4000 warmup steps", "Adam", "Adam with warmup"],
+    "answerable": true,
+    "evidence": "Vaswani et al. (2017) Section 5.3: Optimizer: We used the Adam optimizer with beta1 = 0.9, beta2 = 0.98 and epsilon = 10^-9 with warmup_steps = 4000."
+  },
+  {
+    "id": "u02",
+    "type": "lookup",
+    "unseen": true,
+    "paper_ids": ["demo_bert_2018"],
+    "question": "What is the hidden dimension size (d_model) and number of layers in BERT Base?",
+    "gold_answers": ["768 hidden size and 12 layers", "L=12, H=768", "12 layers, 768 hidden dimension"],
+    "answerable": true,
+    "evidence": "Devlin et al. (2018) Section 3: BERT_BASE: L=12, H=768, A=12, Total Parameters=110M."
+  },
+  {
+    "id": "u03",
+    "type": "lookup",
+    "unseen": true,
+    "paper_ids": ["demo_gpt3_2020"],
+    "question": "What tokenizer does GPT-3 use, and what is its vocabulary size?",
+    "gold_answers": ["Byte-level Byte Pair Encoding with vocabulary size of 50,257", "Byte-level BPE", "50,257 vocabulary size"],
+    "answerable": true,
+    "evidence": "Brown et al. (2020) Section 2: We use the same byte-level Byte Pair Encoding (BPE) dataset tokenization as in GPT-2 with vocab size 50,257."
+  },
+  {
+    "id": "u04",
+    "type": "lookup",
+    "unseen": true,
+    "paper_ids": ["demo_roberta_2019"],
+    "question": "What batch size was used to train the final RoBERTa model across how many GPUs?",
+    "gold_answers": ["8,000 sequences across 1,024 GPUs", "8k batch size across 1024 GPUs", "8,000"],
+    "answerable": true,
+    "evidence": "Liu et al. (2019) Section 4.3: Training with large batches of 8,000 sequences across 1,024 V100 GPUs improves both perplexity and downstream task performance."
+  },
+  {
+    "id": "u05",
+    "type": "multihop",
+    "unseen": true,
+    "paper_ids": ["demo_attention_2017"],
+    "question": "How does the self-attention mechanism in the Transformer compute attention weights from query and key vectors?",
+    "gold_answers": ["Scaled dot-product attention dividing by sqrt(d_k) followed by softmax", "Scaled dot-product", "softmax(QK^T / sqrt(d_k))"],
+    "answerable": true,
+    "evidence": "Vaswani et al. (2017) Section 3.2.1: We compute the dot products of the query with all keys, divide each by sqrt(d_k), and apply a softmax function to obtain the weights on the values."
+  },
+  {
+    "id": "u06",
+    "type": "multihop",
+    "unseen": true,
+    "paper_ids": ["demo_electra_2020"],
+    "question": "In ELECTRA, how does the generator network compare in size to the discriminator network?",
+    "gold_answers": ["The generator is smaller, typically 1/4 to 1/3 the size of the discriminator", "1/4 to 1/3 size", "smaller generator"],
+    "answerable": true,
+    "evidence": "Clark et al. (2020) Section 3.2: We find that having a smaller generator (typically 1/4 to 1/3 the size of the discriminator) yields optimal sample efficiency."
+  },
+  {
+    "id": "u07",
+    "type": "multihop",
+    "unseen": true,
+    "paper_ids": ["demo_t5_2020"],
+    "question": "In T5, what prefix string is prepended to input text for English-to-German translation tasks?",
+    "gold_answers": ["translate English to German:", "translate English to German", "translate English to German: prefix"],
+    "answerable": true,
+    "evidence": "Raffel et al. (2020) Section 3.1: For example, to translate English to German, the input is prefixed with 'translate English to German:'."
+  },
+  {
+    "id": "u08",
+    "type": "multihop",
+    "unseen": true,
+    "paper_ids": ["b7f9484b"],
+    "question": "In XLNet, how does the content stream attention differ from the query stream attention regarding access to position z_t?",
+    "gold_answers": ["Content stream accesses token content x_z_t, while query stream only accesses position z_t and prior context", "Content stream uses x_z_t; query stream uses z_t", "Query stream cannot see content of target position"],
+    "answerable": true,
+    "evidence": "Yang et al. (2019) Section 2.2: The content stream representation encodes both context and x_z_t, while the query stream representation only has access to the target position z_t and the contextual history."
+  },
+  {
+    "id": "u09",
+    "type": "aggregation",
+    "unseen": true,
+    "paper_ids": ["demo_attention_2017"],
+    "question": "How many attention heads are used across each layer in Transformer Base vs Transformer Big?",
+    "gold_answers": ["8 heads in Base and 16 heads in Big", "Base: 8 heads, Big: 16 heads", "8 vs 16"],
+    "answerable": true,
+    "evidence": "Vaswani et al. (2017) Table 3: Base model uses h=8 heads; Big model uses h=16 heads with d_model=1024."
+  },
+  {
+    "id": "u10",
+    "type": "aggregation",
+    "unseen": true,
+    "paper_ids": ["demo_roberta_2019"],
+    "question": "Across how many gigabytes of text was RoBERTa pretrained compared to BERT's original corpus?",
+    "gold_answers": ["160GB of text compared to BERT's 16GB", "160GB vs 16GB", "160GB"],
+    "answerable": true,
+    "evidence": "Liu et al. (2019) Section 3.2: Pretraining dataset includes 160GB of uncompressed text, over 10 times larger than the 16GB used by BERT."
+  },
+  {
+    "id": "u11",
+    "type": "aggregation",
+    "unseen": true,
+    "paper_ids": ["demo_t5_2020"],
+    "question": "How many downstream tasks in the SuperGLUE benchmark does T5-11B evaluate on?",
+    "gold_answers": ["8 tasks", "8 downstream tasks", "8"],
+    "answerable": true,
+    "evidence": "Raffel et al. (2020) Section 4.2 & Table 8: Evaluates across all 8 tasks of the SuperGLUE benchmark suite (BoolQ, CB, COPA, MultiRC, ReCoRD, RTE, WiC, WSC)."
+  },
+  {
+    "id": "u12",
+    "type": "aggregation",
+    "unseen": true,
+    "paper_ids": ["demo_electra_2020"],
+    "question": "How many parameter model scales does ELECTRA evaluate in the paper?",
+    "gold_answers": ["3 model scales: Small, Base, and Large", "3 scales", "Small, Base, Large"],
+    "answerable": true,
+    "evidence": "Clark et al. (2020) Section 4.1: Evaluates 3 distinct scales: ELECTRA-Small (14M params), ELECTRA-Base (110M params), and ELECTRA-Large (335M params)."
+  },
+  {
+    "id": "u13",
+    "type": "cross_paper",
+    "unseen": true,
+    "paper_ids": ["demo_roberta_2019", "demo_bert_2018"],
+    "question": "Comparing BERT and RoBERTa, which paper demonstrates that the Next Sentence Prediction (NSP) task hurts downstream performance?",
+    "gold_answers": ["RoBERTa", "RoBERTa paper", "Liu et al. (RoBERTa)"],
+    "answerable": true,
+    "evidence": "RoBERTa Section 4.2: Removing the next sentence prediction (NSP) loss matches or slightly improves downstream performance, contrary to Devlin et al. (BERT)."
+  },
+  {
+    "id": "u14",
+    "type": "cross_paper",
+    "unseen": true,
+    "paper_ids": ["1e6c7c12", "demo_bert_2018"],
+    "question": "Between GPT (Radford 2018) and BERT (Devlin 2018), which model uses bidirectional self-attention versus causal unidirectional self-attention?",
+    "gold_answers": ["BERT uses bidirectional self-attention, while GPT uses causal unidirectional self-attention", "BERT is bidirectional, GPT is unidirectional", "BERT: bidirectional, GPT: causal unidirectional"],
+    "answerable": true,
+    "evidence": "BERT Section 1 contrasts its bidirectional transformer encoder with OpenAI GPT which is restricted to a left-to-right unidirectional causal attention mask."
+  },
+  {
+    "id": "u15",
+    "type": "cross_paper",
+    "unseen": true,
+    "paper_ids": ["demo_electra_2020", "demo_bert_2018"],
+    "question": "Comparing ELECTRA and BERT on GLUE at identical parameter counts, which achieves higher efficiency per FLOP?",
+    "gold_answers": ["ELECTRA", "ELECTRA achieves higher efficiency per compute", "Clark et al. (ELECTRA)"],
+    "answerable": true,
+    "evidence": "ELECTRA Section 4: ELECTRA-Base achieves higher GLUE performance than BERT-Base while requiring only 1/4 of the training compute."
+  },
+  {
+    "id": "u16",
+    "type": "cross_paper",
+    "unseen": true,
+    "paper_ids": ["demo_attention_2017", "demo_bert_2018"],
+    "question": "Does the original Transformer paper evaluate on question answering like BERT on SQuAD, or purely on machine translation?",
+    "gold_answers": ["Purely on machine translation (WMT English-German and English-French)", "Purely machine translation", "Machine translation only"],
+    "answerable": true,
+    "evidence": "Vaswani et al. (2017) Section 5: Evaluates translation tasks on WMT 2014 English-to-German and English-to-French; does not evaluate SQuAD QA."
+  }
+]

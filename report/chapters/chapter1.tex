@@ -1,0 +1,79 @@
+\chapter{INTRODUCTION}
+
+\section{Background}
+The exponential expansion of contemporary scientific literature poses a formidable challenge for researchers, scholars, and engineering practitioners seeking to extract precise, verifiable factual information across complex scholarly corpora. In domains such as Natural Language Processing (NLP) and Artificial Intelligence (AI), foundational research papers~\cite{vaswani2017attention, devlin2018bert} contain deep architectural descriptions, mathematical derivations, empirical baseline tables, and ablation analyses that span tens of pages. Traditional document inspection methods require exhaustive manual reading and cross-referencing across multiple related publications to verify specific experimental results, parameter configurations, or architectural differences.
+
+With the advent of Large Language Models (LLMs), automated question answering and scientific literature assistants have gained widespread attention. However, when standard Large Language Models operate in a zero-shot, parametric memory setting, they are severely hindered by well-documented failure modes: parametric hallucination, outdated memorization, and an inability to inspect fine-grained tables and numerical figures accurately. When asked nuanced research questions regarding specific hyperparameters, dataset splits, or metric comparisons, direct LLM generation frequently produces plausible-sounding yet factually inaccurate claims without provenance citations.
+
+To address parametric memory limitations, Retrieval-Augmented Generation (RAG) has emerged as the prevailing industry paradigm~\cite{lewis2020retrieval}. Standard vector-based RAG architectures segment research papers into contiguous chunks of fixed token lengths (e.g., 512 tokens), embed these text fragments using dense neural bi-encoders (such as Sentence-BERT~\cite{reimers2019sentence}), and retrieve top-$k$ nearest neighbors via cosine similarity. Despite its utility for single-sentence lexical queries, standard Vector RAG exhibits severe systemic breakdowns when applied to scientific papers:
+\begin{enumerate}
+    \item \textbf{Chunk Boundary Truncation:} Flattening complex multi-column scientific tables into linear chunks destroys cell alignments and relational coordinate contexts.
+    \item \textbf{Multi-Hop Reasoning Loss:} Answering queries that require traversing multiple causal dependencies (e.g., how an optimizer configuration relates to learning rate warm-up schedules and downstream perplexity) requires synthesizing evidence scattered across disjoint sections, which isolated top-$k$ chunks fail to connect.
+    \item \textbf{Cross-Document Disconnection:} Comparative queries across multiple publications (e.g., contrasting the pretraining loss of BERT against RoBERTa and ELECTRA) require intersecting distinct document spaces, which vector similarity spaces cannot bridge without explicit relational linking.
+\end{enumerate}
+
+Knowledge Graphs (KGs) provide a principled, structured alternative by representing scientific concepts, methodologies, datasets, and benchmark metrics as typed entity nodes interconnected by directed relational edges. By grounding reasoning within an explicit graph database, question answering can be formulated as deterministic relational path traversal rather than probabilistic next-token hallucination.
+
+\section{Domain Overview}
+This project belongs to the domain of \textbf{Full-Stack AI-Powered Knowledge Engineering, Graph Data Systems, and Natural Language Processing}. More specifically, it intersects:
+\begin{itemize}
+    \item \textbf{Full-Stack Web Engineering:} Developing an asynchronous, reactive web platform utilizing modern component frameworks (React, Vite) and high-performance server architectures (FastAPI, Python AsyncIO) to support real-time multi-agent execution and graph visualization.
+    \item \textbf{Graph Database Systems:} Utilizing enterprise graph databases (Neo4j) powered by the Cypher query language to model structural, typed schemas, property graphs, and cross-document entity mappings.
+    \item \textbf{Agentic LLM Architectures:} Constructing reasoning-and-acting (ReACT) loops, schema-constrained Abstract Syntax Tree (AST) query planners, and multi-run consensus voting mechanisms that interface directly with local and hosted Large Language Models.
+    \item \textbf{Scientific Information Extraction (SciIE):} Parsing complex academic PDFs, extracting hierarchical section structures, table matrices, figures, and linking co-referenced entities across diverse publications.
+\end{itemize}
+
+The real-world relevance of this domain is critical: biomedical researchers, patent examiners, legal analysts, and artificial intelligence engineers require question-answering systems with guaranteed \textbf{factual provenance} and \textbf{zero hallucination tolerance}. Providing verifiable citations anchored directly to paper section paragraphs and table coordinates is essential for trustworthy academic inquiry.
+
+\section{Problem Statement}
+Contemporary scientific question-answering systems struggle with four acute deficiencies:
+\begin{enumerate}
+    \item \textbf{Parametric Memorization Voids:} Zero-shot LLMs lack direct document grounding, causing them to hallucinate non-existent baseline numbers, misattribute findings to incorrect authors, or invent fictitious experimental settings.
+    \item \textbf{Disjoint Vector Chunk Fragmentation:} Standard Vector RAG flattens documents into arbitrary token windows, losing cross-section connections, omitting tabular coordinate structures, and failing when answer evidence spans non-contiguous pages.
+    \item \textbf{Unconstrained Graph Noise Explosion:} Naive Open Information Extraction (Open-IE) knowledge graph agents suffer from synonym relation explosion (encountering 35+ unconstrained relation labels like \texttt{RELATED\_TO}, \texttt{ASSOCIATED\_WITH}), leading to multi-hop path drift and high inference latency.
+    \item \textbf{Lack of Unified Evaluation and Provenance Inspection:} Existing full-stack research platforms lack simultaneous multi-model arenas that benchmark alternative architectures side-by-side against rigorous Gold Standard ground truth with automated semantic multi-metrics (Exact Match, Token F1, BLEU, Cosine Similarity, BERTScore).
+\end{enumerate}
+
+The specific problem addressed by this project is: \textit{How can we design, implement, and evaluate a full-stack, schema-constrained Knowledge Graph multi-agent platform that guarantees high-precision factual grounding, eliminates hallucination on complex multi-hop, tabular, and long synthesis queries, and transparently proves its superiority over standard Vector RAG and Direct LLM baselines?}
+
+\section{Motivation}
+The motivation for this project stems from the critical need for \textbf{scientific integrity and reproducibility} in AI research tools. In recent years, thousands of scholarly papers have been published monthly on arXiv, making comprehensive literature review virtually impossible without automated tools. However, using off-the-shelf generative AI assistants has led to alarming instances of fabricated citations and incorrect scientific metrics. 
+
+Our team was motivated to build a complete, transparent, full-stack solution from first principles:
+\begin{itemize}
+    \item We sought to replace black-box retrieval with \textbf{explainable graph AST traversal}, where every reasoning step corresponds to an explicit, inspectable Cypher path.
+    \item We recognized that tabular benchmarks (e.g., GLUE leaderboard numbers, WMT translation BLEU scores) are the lifeblood of experimental papers, yet represent the single greatest failure mode for standard vector retrieval.
+    \item We identified that incorporating a \textbf{multi-run consensus voting mechanism} (a majority-vote filter that requires relation edges to be corroborated across repeated extraction passes) could drastically prune extraction noise and eliminate spurious graph edges.
+    \item We aimed to provide a production-grade full-stack user interface with interactive Cytoscape knowledge graph exploration, live multi-model benchmarking arenas, and reasoning trace inspectors that empower users to verify facts down to the exact paper section.
+\end{itemize}
+
+\section{Objectives}
+The primary objectives of this Full-Stack Development project are:
+\begin{enumerate}
+    \item \textbf{Design a Schema-Constrained Scientific Ontology:} Establish a typed schema ($R_7$) comprising canonical node labels (\texttt{Paper}, \texttt{Method}, \texttt{Dataset}, \texttt{Metric}, \texttt{Table}, \texttt{Section}) and strict relational predicates (\texttt{USES\_METHOD}, \texttt{EVALUATED\_ON}, \texttt{REPORTS\_METRIC}, \texttt{CONTRASTED\_WITH}, \texttt{SAME\_AS}).
+    \item \textbf{Implement Structured Document and Table Ingestion:} Build an end-to-end PDF processing pipeline that extracts hierarchical sections, preserves markdown table coordinate grids, and models tabular cells as queryable Neo4j graph nodes.
+    \item \textbf{Develop an Agentic ReACT Graph Reasoning Engine:} Construct a Schema AST query compiler that translates natural language queries into valid Cypher graph queries, executing multi-hop traversals with a 50\% consensus majority-vote filter and lazy graph pruning.
+    \item \textbf{Construct a Comprehensive 100-Question Multi-Tier Benchmark:} Curate 100 verified questions across 10 seminal NLP papers spanning five distinct cognitive tiers: Lookup (20Q), Multi-Hop (20Q), Aggregation (20Q), Cross-Paper (20Q), and Paragraph-Level Long Synthesis (20Q).
+    \item \textbf{Build a Reactive, Interactive Full-Stack Web Platform:} Develop a responsive React/Vite frontend and FastAPI backend featuring a 4-Model Simultaneous Arena, Cytoscape graph visualizer, Figure/Table provenance viewer, and automated evaluation leaderboard.
+    \item \textbf{Conduct Rigorous Multi-Metric Comparative Evaluation:} Benchmark our proposed agent against Direct LLM, Standard Vector RAG, and Naive KG Agent across Exact Match (EM), Token F1, BLEU, TF-IDF Cosine Similarity, and BERTScore.
+\end{enumerate}
+
+\section{Scope of the Project}
+The scope of this project encompasses:
+\begin{itemize}
+    \item \textbf{Corpus Ingestion:} Ingestion, structural indexing, and graph modeling of 10 seminal, peer-reviewed deep learning and NLP research papers (including Vaswani et al. 2017 [Transformer], Devlin et al. 2018 [BERT], Radford et al. 2018 [GPT-1], Liu et al. 2019 [RoBERTa], Clark et al. 2020 [ELECTRA], Raffel et al. 2020 [T5], Brown et al. 2020 [GPT-3], Yang et al. 2019 [XLNet], and domain-specific comparative assets).
+    \item \textbf{Graph Database Architecture:} Deployment of a live Neo4j instance hosting 1,546 typed nodes and 1,634 verified schema edges.
+    \item \textbf{Evaluation Benchmark:} 100 ground-truth QA items and 16 unseen real-time test queries across 5 cognitive difficulty tiers.
+    \item \textbf{Software Stack:} A decoupled client-server architecture consisting of a React 18 single-page application and a FastAPI asynchronous REST/SSE backend.
+\end{itemize}
+
+\textit{Boundaries of Scope:} The system is optimized for scholarly computer science and AI publications with structured English text, mathematical formulations, and experimental tables. OCR scanning of low-resolution scanned historical manuscripts and non-English corpora is outside the current scope.
+
+\section{Target Users}
+The proposed KG-Paper-Assistant platform is designed for:
+\begin{itemize}
+    \item \textbf{AI and Machine Learning Researchers:} Requiring rapid, verifiable factual cross-referencing across foundational model architectures, parameter scaling comparisons, and benchmark leaderboards without hallucination.
+    \item \textbf{Graduate Students and Academic Scholars:} Writing literature reviews and requiring precise paper provenance citations, section references, and clear relational understanding of how newer methods extend or contrast prior work.
+    \item \textbf{Research Librarians and Information Scientists:} Auditing scientific knowledge bases and verifying factual claims against original publication artifacts.
+    \item \textbf{Enterprise R\&D Engineers:} Evaluating which model architecture, pretraining objective, or compute budget aligns best with commercial deployment constraints.
+\end{itemize}

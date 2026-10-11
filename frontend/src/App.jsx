@@ -6,27 +6,31 @@ import ChatPanel from './components/ChatPanel';
 import ReasoningTrace from './components/ReasoningTrace';
 import GraphViewer from './components/GraphViewer';
 import FigurePanel from './components/FigurePanel';
-import DemoPanel from './components/DemoPanel';
-import DualComparison from './components/DualComparison';
 import ArchitecturePanel from './components/ArchitecturePanel';
 import ExperimentsPanel from './components/ExperimentsPanel';
+import ProvenanceInspector from './components/ProvenanceInspector';
+import BenchmarkCatalogModal from './components/BenchmarkCatalogModal';
 import { useSSE } from './hooks/useSSE';
 import { getPapers, getPaperFigures, getPaperTables, queryPapers, queryNaive, comparePapers } from './utils/api';
 
 export default function App() {
   const [papers, setPapers] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
-  const [rightTab, setRightTab] = useState('graph');
-  const [queryModeView, setQueryModeView] = useState('multi'); // 'multi' | 'single' | 'naive' | 'dual'
+  const [rightTab, setRightTab] = useState('provenance'); // Option A: Side-by-side failure vs graph traversal is default
+  const [queryModeView, setQueryModeView] = useState('multi'); // 'multi' | 'single' | 'naive'
   const useNaive = queryModeView === 'naive';
   const [figures, setFigures] = useState([]);
   const [tables, setTables] = useState([]);
-  const [isDemoMode, setIsDemoMode] = useState(false);
-  const [demoQuestion, setDemoQuestion] = useState('');
+  
+  // 80-Question Benchmark Catalog Modal & Active Turn Inspector State
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState('');
+  const [activeTurn, setActiveTurn] = useState(null);
+  const [showTrace, setShowTrace] = useState(false);
 
   const { steps, answer, subgraph, trace, isStreaming, error, startQuery } = useSSE();
 
-  // Fetch papers on mount and periodically
+  // Fetch verified structured papers on mount and periodically
   const fetchPapers = useCallback(async () => {
     try {
       const data = await getPapers();
@@ -77,7 +81,7 @@ export default function App() {
     let url;
     const body = {
       question,
-      paper_ids: selectedIds,
+      paper_ids: selectedIds.length > 0 ? selectedIds : papers.map(p => p.id),
       mode,
     };
 
@@ -94,11 +98,31 @@ export default function App() {
     await startQuery(url, body);
   };
 
+  // Handler when a user selects a question from the 80-question benchmark catalog modal
+  const handleSelectFromCatalog = (questionItem) => {
+    setIsCatalogOpen(false);
+    if (questionItem.paper_ids && questionItem.paper_ids.length > 0) {
+      setSelectedIds(questionItem.paper_ids);
+    }
+    // Set external query to trigger 4-model evaluation in ChatPanel
+    setCatalogQuery(questionItem.question);
+    // Switch right panel to Provenance Inspector (Option A) to display live comparison & failure reasons
+    setRightTab('provenance');
+  };
+
   return (
     <>
-      <Header isDemoMode={isDemoMode} setIsDemoMode={setIsDemoMode} />
+      <Header onOpenCatalog={() => setIsCatalogOpen(true)} />
+      
+      {/* 80-Question Benchmark Modal */}
+      <BenchmarkCatalogModal
+        isOpen={isCatalogOpen}
+        onClose={() => setIsCatalogOpen(false)}
+        onSelectQuestion={handleSelectFromCatalog}
+      />
+
       <div className="app-layout">
-        {/* ── Left Sidebar ── */}
+        {/* ── Left Sidebar (Only Verified Structured Papers) ── */}
         <aside className="sidebar">
           <div className="sidebar-section">
             <div className="sidebar-title">Upload Paper</div>
@@ -107,10 +131,10 @@ export default function App() {
 
           <div className="sidebar-section" style={{ flex: 1, overflowY: 'auto' }}>
             <div className="sidebar-title">
-              Papers ({papers.length})
+              Verified Papers ({papers.length})
               {selectedIds.length > 0 && (
-                <span style={{ float: 'right', color: 'var(--accent-purple)', fontWeight: 500 }}>
-                  {selectedIds.length} selected
+                <span style={{ float: 'right', color: 'var(--accent-blue)', fontWeight: 600 }}>
+                  {selectedIds.length} active
                 </span>
               )}
             </div>
@@ -122,147 +146,140 @@ export default function App() {
           </div>
         </aside>
 
-        {/* ── Center Panel ── */}
+        {/* ── Center Panel (Simultaneous 4-Model Arena) ── */}
         <main className="center-panel" style={{ padding: 0 }}>
-          {isDemoMode ? (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              {!demoQuestion ? (
-                <DemoPanel 
-                  onSelectQuestion={q => setDemoQuestion(q)} 
-                  selectedPaperIds={selectedIds} 
-                  refreshPapers={fetchPapers}
-                />
-              ) : (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ padding: '8px 20px', background: 'var(--bg-panel)', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <button className="action-btn outline" onClick={() => setDemoQuestion('')}>← Back to Demo Menu</button>
-                  </div>
-                  <DualComparison selectedPaperIds={selectedIds} initialQuestion={demoQuestion} />
-                </div>
-              )}
+          <div className="mode-toggle-bar">
+            <div className="mode-toggle">
+              <button
+                className={`mode-btn ${queryModeView === 'multi' ? 'active kg' : ''}`}
+                onClick={() => setQueryModeView('multi')}
+                title="Simultaneous 4-Model Evaluation: Direct LLM, Vector RAG, Naive KG, and Our Schema-Constrained KG Agent"
+              >
+                ⚔️ 4-Model Simultaneous Arena
+              </button>
+              <button
+                className={`mode-btn ${queryModeView === 'single' ? 'active kg' : ''}`}
+                onClick={() => setQueryModeView('single')}
+                title="Single ReACT agent with dynamic Cypher traversal"
+              >
+                ⚡ Single-Agent Stream
+              </button>
+              <button
+                className={`mode-btn ${queryModeView === 'naive' ? 'active naive' : ''}`}
+                onClick={() => setQueryModeView('naive')}
+                title="Naive text chunk retrieval baseline"
+              >
+                📄 Naive RAG Stream
+              </button>
             </div>
-          ) : (
-            <>
-              <div className="mode-toggle-bar">
-                <div className="mode-toggle">
-                  <button
-                    className={`mode-btn ${queryModeView === 'multi' ? 'active kg' : ''}`}
-                    onClick={() => setQueryModeView('multi')}
-                    title="Traceable 4-Agent Pipeline: Planner → Retriever → Reasoner → Verifier"
-                  >
-                    🤖 KG Multi-Agent
-                  </button>
-                  <button
-                    className={`mode-btn ${queryModeView === 'single' ? 'active kg' : ''}`}
-                    onClick={() => setQueryModeView('single')}
-                    title="Legacy single ReACT agent with dynamic Cypher traversal"
-                  >
-                    ⚡ KG Single-Agent
-                  </button>
-                  <button
-                    className={`mode-btn ${queryModeView === 'naive' ? 'active naive' : ''}`}
-                    onClick={() => setQueryModeView('naive')}
-                    title="Simple text retrieval + LLM (no graph reasoning)"
-                  >
-                    📄 Naive RAG
-                  </button>
-                  <button
-                    className={`mode-btn ${queryModeView === 'dual' ? 'active' : ''}`}
-                    onClick={() => setQueryModeView('dual')}
-                    style={{
-                      background: queryModeView === 'dual' ? 'linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)' : 'transparent',
-                      color: queryModeView === 'dual' ? '#fff' : 'var(--text-secondary)',
-                    }}
-                    title="Run both side-by-side and compare answers and metrics live"
-                  >
-                    ⚔️ Dual A/B Test
-                  </button>
-                </div>
-                {queryModeView === 'multi' && (
-                  <span className="mode-hint" style={{ color: 'var(--accent-purple)' }}>
-                    4 specialist agents: Planner, Retriever, Reasoner, and Verifier with provenance fact-checking
-                  </span>
-                )}
-                {queryModeView === 'single' && (
-                  <span className="mode-hint">Single ReACT loop with lazy graph traversal</span>
-                )}
-                {queryModeView === 'naive' && (
-                  <span className="mode-hint">Baseline mode — no Knowledge Graph reasoning</span>
-                )}
-                {queryModeView === 'dual' && (
-                  <span className="mode-hint" style={{ color: 'var(--accent-purple)' }}>
-                    Live A/B comparison on the same question with real-time metrics
-                  </span>
-                )}
-              </div>
+            <span className="mode-hint" style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>
+              Simultaneously running Direct LLM, Vector RAG, Naive KG &amp; Our Proposed KG Agent with Ground Truth scoring
+            </span>
+          </div>
 
-              {queryModeView === 'dual' ? (
-                <DualComparison selectedPaperIds={selectedIds} />
-              ) : (
-                <>
-                  <ChatPanel
-                    selectedPaperIds={selectedIds}
-                    onSendQuery={handleSendQuery}
-                    answer={answer}
-                    isStreaming={isStreaming}
-                  />
-                  <ReasoningTrace steps={steps} isStreaming={isStreaming} />
-                  {error && (
-                    <div style={{
-                      padding: '8px 16px', background: 'rgba(244,63,94,0.1)',
-                      borderTop: '1px solid rgba(244,63,94,0.3)',
-                      color: 'var(--accent-rose)', fontSize: '0.8rem',
-                    }}>
-                      Error: {error}
-                    </div>
-                  )}
-                </>
-              )}
-            </>
+          <ChatPanel
+            selectedPaperIds={selectedIds}
+            onSendQuery={handleSendQuery}
+            answer={answer}
+            isStreaming={isStreaming}
+            onTurnEvaluated={(turnResult) => {
+              setActiveTurn(turnResult);
+            }}
+            externalQuery={catalogQuery}
+          />
+
+          {steps && steps.length > 0 && (
+            <div style={{
+              padding: '8px 18px',
+              background: '#f8fafc',
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                Single-Agent Reasoning Stream: <strong>{steps.length} steps recorded</strong>
+              </div>
+              <button
+                className="action-btn outline"
+                onClick={() => setShowTrace(prev => !prev)}
+                style={{ fontSize: '0.72rem', padding: '4px 12px' }}
+              >
+                {showTrace ? '✕ Hide Reasoning Trace' : `🔍 View Reasoning Trace (${steps.length} steps)`}
+              </button>
+            </div>
+          )}
+
+          {showTrace && steps && steps.length > 0 && (
+            <ReasoningTrace steps={steps} isStreaming={isStreaming} />
+          )}
+
+          {error && (
+            <div style={{
+              padding: '8px 16px', background: 'rgba(244,63,94,0.1)',
+              borderTop: '1px solid rgba(244,63,94,0.3)',
+              color: 'var(--accent-rose)', fontSize: '0.8rem',
+            }}>
+              Error: {error}
+            </div>
           )}
         </main>
 
-        {/* ── Right Panel ── */}
+        {/* ── Right Panel (Inspector, Graph, Tables & Ablations) ── */}
         <aside className="right-panel">
           <div className="panel-tabs">
             <button
+              className={`panel-tab ${rightTab === 'provenance' ? 'active' : ''}`}
+              onClick={() => setRightTab('provenance')}
+              title="Side-by-side failure analysis: What RAG retrieved vs what our KG traversed"
+            >
+              ⚔️ RAG vs KG Provenance
+            </button>
+            <button
               className={`panel-tab ${rightTab === 'graph' ? 'active' : ''}`}
               onClick={() => setRightTab('graph')}
+              title="Interactive Knowledge Graph visualization with entity reasoning"
             >
               Knowledge Graph
             </button>
             <button
               className={`panel-tab ${rightTab === 'figures' ? 'active' : ''}`}
               onClick={() => setRightTab('figures')}
+              title="Extracted benchmark tables and model diagrams"
             >
-              Figures & Tables
-            </button>
-            <button
-              className={`panel-tab ${rightTab === 'architecture' ? 'active' : ''}`}
-              onClick={() => setRightTab('architecture')}
-            >
-              Architecture & Metrics
+              Figures &amp; Tables
             </button>
             <button
               className={`panel-tab ${rightTab === 'experiments' ? 'active' : ''}`}
               onClick={() => setRightTab('experiments')}
+              title="80-Question Benchmark Leaderboard, Sweeps & Ablations"
             >
-              Experiments & Ablations
+              80-Q Benchmark &amp; Ablations
+            </button>
+            <button
+              className={`panel-tab ${rightTab === 'architecture' ? 'active' : ''}`}
+              onClick={() => setRightTab('architecture')}
+              title="System architecture specifications and agent topology"
+            >
+              Architecture &amp; Pipeline
             </button>
           </div>
 
           <div className="panel-content" style={{ padding: rightTab === 'graph' ? 0 : undefined }}>
+            {rightTab === 'provenance' && (
+              <ProvenanceInspector activeTurn={activeTurn} />
+            )}
             {rightTab === 'graph' && (
               <GraphViewer subgraph={subgraph} selectedPaperIds={selectedIds} useNaive={useNaive} />
             )}
             {rightTab === 'figures' && (
               <FigurePanel figures={figures} tables={tables} />
             )}
-            {rightTab === 'architecture' && (
-              <ArchitecturePanel />
-            )}
             {rightTab === 'experiments' && (
               <ExperimentsPanel />
+            )}
+            {rightTab === 'architecture' && (
+              <ArchitecturePanel />
             )}
           </div>
         </aside>

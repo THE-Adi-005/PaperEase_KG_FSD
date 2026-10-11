@@ -1,0 +1,175 @@
+\chapter{SYSTEM DESIGN AND ARCHITECTURE}
+
+\section{Overall System Architecture}
+The system architecture of \textbf{KG-Paper-Assistant} follows a decoupled, three-tier enterprise web application model designed for high-concurrency asynchronous execution and real-time graph reasoning. The platform consists of a modern Single-Page Application (SPA) frontend, an asynchronous FastAPI application server, a high-performance Neo4j graph database, and local/hosted Large Language Model inference runtimes.
+
+Figure~\ref{fig:overall_arch} illustrates the complete end-to-end architecture and communication flow of the platform:
+\begin{figure}[h]
+\centering
+\begin{verbatim}
++-----------------------------------------------------------------------------------+
+|                            REACT 18 SINGLE-PAGE CLIENT                            |
+|  +---------------------+  +------------------------+  +------------------------+  |
+|  | Paper Uploader &    |  | 4-Model Simultaneous   |  | Cytoscape 2D/3D Graph  |  |
+|  | Corpus Catalog      |  | Evaluation Arena       |  | Visualizer & Provenance|  |
+|  +----------+----------+  +-----------+------------+  +-----------+------------+  |
++-------------|-------------------------|---------------------------|---------------+
+              | HTTP Multipart          | JSON / SSE                | REST / JSON
+              v                         v                           v
++-----------------------------------------------------------------------------------+
+|                        FASTAPI ASYNCHRONOUS BACKEND SERVER                        |
+|  +--------------------+  +-----------------------+  +--------------------------+  |
+|  | Document Ingestion |  | Schema AST Compiler   |  | Multi-Metric Evaluator   |  |
+|  | & Table Extractor  |  | & ReACT Multi-Agent   |  | (EM, F1, BLEU, BERTScore)|  |
+|  +----------+---------+  +-----------+-----------+  +--------------------------+  |
++-------------|------------------------|--------------------------------------------+
+              | Cypher Write           | Cypher Read / Path Search
+              v                        v
++-----------------------------------------------------------------------------------+
+|                       NEO4J PROPERTY GRAPH DATABASE                               |
+|   1,546 Nodes (Paper, Method, Dataset, Metric, Table, Section)                    |
+|   1,634 Edges (USES_METHOD, EVALUATED_ON, REPORTS_METRIC, SAME_AS, etc.)          |
++-----------------------------------------------------------------------------------+
+              ^                                                     ^
+              | Local API                                           | Embeddings
++-------------+------------------------+  +-------------------------+---------------+
+|     OLLAMA LOCAL LLM RUNTIME         |  |   HUGGINGFACE SENTENCE-TRANSFORMERS     |
+|   (Qwen 2.5 7B / DeepSeek-R1 / LLaMA)|  |     (all-MiniLM-L6-v2 Neural Bi-Encoder)|
++--------------------------------------+  +-----------------------------------------+
+\end{verbatim}
+\caption{Overall System Architecture of the KG-Paper-Assistant Platform}
+\label{fig:overall_arch}
+\end{figure}
+
+The interaction path proceeds as follows:
+\begin{enumerate}
+    \item \textbf{Client Layer:} The user interacts with the React 18 interface, submitting literature questions or uploading research paper PDFs.
+    \item \textbf{API Gateway / Server Layer:} Requests reach the FastAPI backend asynchronously. Document ingestion queues structural extraction; query requests dispatch to the multi-agent reasoner.
+    \item \textbf{Agent Orchestration Layer:} The agent executes the ReACT loop, constructing validated Schema AST Cypher queries.
+    \item \textbf{Data Tier:} Neo4j executes Cypher path lookups across indexed property graphs, returning verified node triples and paper provenance references.
+    \item \textbf{Evaluation Engine:} The server calculates Exact Match, SQuAD Token F1, sentence BLEU, TF-IDF Cosine, and BERTScore against gold-standard targets, returning synchronized payloads to the frontend.
+\end{enumerate}
+
+\section{Frontend Design}
+The frontend is constructed using \textbf{React 18} and \textbf{Vite}, delivering an instantaneous, responsive user interface styled with custom Vanilla CSS tokens to guarantee maximum design precision and visual appeal.
+
+\subsection{Component Hierarchy and Layout}
+The client interface is partitioned into three functional viewports:
+\begin{itemize}
+    \item \textbf{Left Sidebar (\texttt{PaperList.jsx}, \texttt{PaperUploader.jsx}):} Manages corpus selection, displaying verified research papers with visual status badges (\texttt{COMPLETE}, section counts) and drag-and-drop PDF ingestion controls.
+    \item \textbf{Center Stage (\texttt{ChatPanel.jsx}, \texttt{DualComparison.jsx}):} Hosts the simultaneous 4-model evaluation arena, real-time query input, quick test chips (Live Unseen Questions and 80-Q/100-Q Benchmarks), and comparative response cards.
+    \item \textbf{Right Inspector Panel (\texttt{GraphViewer.jsx}, \texttt{ProvenanceInspector.jsx}, \texttt{FigurePanel.jsx}, \texttt{ReasoningTrace.jsx}):} An interactive tabbed utility containing the Cytoscape graph visualizer, RAG chunk vs. KG graph provenance side-by-side inspector, extracted table viewer, and ReACT step trace log.
+\end{itemize}
+
+\subsection{State Management and Asynchronous Streaming}
+The frontend manages state using native React hooks (\texttt{useState}, \texttt{useEffect}, \texttt{useRef}) and custom hooks (\texttt{usePaperStream.js}). When executing single-agent queries, the client establishes an EventSource connection to the backend's Server-Sent Events (SSE) stream, rendering each intermediate thought, action, and observation dynamically without page reloads.
+
+\section{Backend Design}
+The backend application is implemented in \textbf{Python 3.11} using the \textbf{FastAPI} framework, taking advantage of Python's asynchronous event loop (\texttt{asyncio}) for non-blocking I/O operations.
+
+\subsection{Modular Router Architecture}
+The backend is structured into decoupled, single-responsibility modules:
+\begin{itemize}
+    \item \texttt{app/routers/query.py}: Manages query dispatch, simultaneous 4-model arena comparisons (\texttt{/api/query-compare-all}), and SSE streaming reasoning loops (\texttt{/api/query/stream}).
+    \item \texttt{app/routers/papers.py}: Manages document upload, validation, parsing status, and metadata indexing.
+    \item \texttt{app/routers/graph.py}: Serves graph node and edge payloads formatted for Cytoscape.js visualization, including neighborhood subgraph expansion.
+    \item \texttt{app/routers/figures.py}: Serves extracted LaTeX/Markdown table matrices and figure assets with associated captions.
+    \item \texttt{app/routers/benchmark.py}: Serves the 100-question benchmark catalog and handles on-demand test execution.
+\end{itemize}
+
+\subsection{Service Layer Separation}
+Business logic is encapsulated inside dedicated services:
+\begin{itemize}
+    \item \texttt{app/services/agent.py}: Implements the Schema AST ReACT reasoning loop.
+    \item \texttt{app/services/kg\_builder.py}: Executes triple extraction and Neo4j graph population.
+    \item \texttt{app/services/eval\_metrics.py}: Computes authentic multi-metric scores (EM, F1, BLEU, Cosine, BERTScore).
+    \item \texttt{app/services/naive\_rag.py}: Implements the dense vector embedding baseline using Sentence-Transformers and FAISS.
+\end{itemize}
+
+\section{Database Design}
+The database layer uses \textbf{Neo4j Enterprise / Community 5.x}, a native labeled property graph database engine. Data is modeled according to the strict **Scientific Schema Ontology ($R_7$)**.
+
+\subsection{Node Label Hierarchy}
+The knowledge graph comprises 1,546 typed nodes categorized under specific labels:
+\begin{itemize}
+    \item \texttt{Paper}: Scholarly publication entity (properties: \texttt{id}, \texttt{title}, \texttt{year}, \texttt{authors}, \texttt{venue}).
+    \item \texttt{Method}: Machine learning architecture, model, or algorithm (properties: \texttt{name}, \texttt{category}, \texttt{parameters}).
+    \item \texttt{Dataset}: Benchmark or evaluation corpus (properties: \texttt{name}, \texttt{task}, \texttt{size}).
+    \item \texttt{Metric}: Evaluation measure (properties: \texttt{name}, \texttt{unit}, \texttt{direction}).
+    \item \texttt{Table}: Structured experimental table (properties: \texttt{label}, \texttt{caption}, \texttt{headers}, \texttt{rows\_json}).
+    \item \texttt{Section}: Document section (properties: \texttt{title}, \texttt{index}, \texttt{content\_preview}).
+\end{itemize}
+
+\subsection{Typed Relation Schema ($R_7$)}
+The 1,634 directed edges adhere to formal schema constraints:
+\begin{equation}
+\begin{aligned}
+    (\text{Paper}) &\xrightarrow{\text{USES\_METHOD}} (\text{Method}) \\
+    (\text{Method}) &\xrightarrow{\text{EVALUATED\_ON}} (\text{Dataset}) \\
+    (\text{Method}) &\xrightarrow{\text{ACHIEVES}} (\text{MetricValue}) \xrightarrow{\text{REPORTS\_METRIC}} (\text{Metric}) \\
+    (\text{Method}_A) &\xrightarrow{\text{CONTRASTED\_WITH}} (\text{Method}_B) \\
+    (\text{Method}_A) &\xrightarrow{\text{EXTENDS}} (\text{Method}_B) \\
+    (\text{Paper}) &\xrightarrow{\text{CONTAINS\_TABLE}} (\text{Table}) \\
+    (\text{Entity}_A) &\xrightarrow{\text{SAME\_AS}} (\text{Entity}_B)
+\end{aligned}
+\end{equation}
+
+\subsection{Database Indexing and Constraints}
+To ensure constant-time entity lookup and prevent duplication, uniqueness constraints and composite B-tree indexes are enforced:
+\begin{verbatim}
+CREATE CONSTRAINT unique_paper_id FOR (p:Paper) REQUIRE p.id IS UNIQUE;
+CREATE CONSTRAINT unique_method_name FOR (m:Method) REQUIRE m.name IS UNIQUE;
+CREATE INDEX entity_name_index FOR (n:Entity) ON (n.name);
+\end{verbatim}
+
+\section{Chatbot / AI Agent Design}
+The agent architecture avoids black-box prompt-and-pray generation by employing a structured **ReACT (Reasoning and Acting) Agent Pipeline**:
+\begin{enumerate}
+    \item \textbf{Planner Stage:} The user prompt is parsed by an LLM planner to extract query intents, target entity candidates, and cognitive tier requirements (e.g., whether the query requires single-fact lookup, multi-hop traversal, or tabular aggregation).
+    \item \textbf{Schema AST Cypher Generation:} The agent maps extracted entities onto verified schema relation patterns, generating a syntactically valid Cypher query that complies with the $R_7$ ontology.
+    \item \textbf{Graph Execution and Observation:} The Cypher query is executed against Neo4j. The returned subgraphs, node attributes, and table rows become structured observations.
+    \item \textbf{Multi-Run Consensus Verification:} For relational claims extracted dynamically, the agent verifies edge existence against a pre-computed 50\% majority-vote threshold ($V \ge 0.50$). If relation confidence falls below the threshold, the branch is safely pruned.
+    \item \textbf{Provenance Grounding and Synthesis:} The agent synthesizes a structured final answer (Direct Answer, Reasoning, and Provenance Citation). If no valid relational path connects the query entities, the agent enters a safe-abstention state.
+\end{enumerate}
+
+\section{Data Flow / Workflow}
+Figure~\ref{fig:workflow_diagram} illustrates the end-to-end data flow from PDF document ingestion to question-answering evaluation:
+\begin{figure}[h]
+\centering
+\begin{verbatim}
+[Research Paper PDF]
+        |
+        v
+[GROBID / PyMuPDF Structural Parser] 
+        |---> Text Sections ---> [SciIE Entity Extractor] ---> (Candidate Triples)
+        |---> LaTeX/MD Tables -> [Table Matrix Parser]     ---> (Table Cells)
+                                                                     |
+                                                                     v
+                                                          [50% Majority-Vote Consensus]
+                                                                     |
+                                                                     v
+                                                          [Neo4j Property Graph (R7)]
+                                                                     ^
+                                                                     |
+[User Query] ---> [Schema AST Compiler] ---> [Cypher Execution] -----+
+        |                                            |
+        |                                            v
+        |                                   [Retrieved Graph Triples]
+        |                                            |
+        +--------------------------------------------+
+        |
+        v
+[Multi-Agent ReACT Reasoner]
+        |
+        v
+[Structured Output: Answer + Reasoning + Provenance]
+        |
+        v
+[Multi-Metric Evaluation Engine vs Ground Truth]
+        |
+        v
+[Synchronized 4-Model Arena & Leaderboard UI]
+\end{verbatim}
+\caption{End-to-End Ingestion, Traversal, and Evaluation Data-Flow Diagram}
+\label{fig:workflow_diagram}
+\end{figure}

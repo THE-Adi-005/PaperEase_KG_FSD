@@ -1,0 +1,172 @@
+\documentclass[12pt,a4paper,oneside]{report}
+
+% -------------------------------------------------------------
+% PACKAGES & CONFIGURATION
+% -------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[top=1in,bottom=1in,left=1.25in,right=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{makecell}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{fancyhdr}
+\usepackage{cite}
+\usepackage{microtype}
+\usepackage{setspace}
+\usepackage{url}
+\usepackage[hidelinks,breaklinks=true]{hyperref}
+
+% Page Spacing
+\setstretch{1.3} % 1.3 line spacing gives clear 25-30 page volume
+
+% Code Listing Formatting
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.97,0.97,0.98}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue}\bfseries,
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{black!20}
+}
+\lstset{style=mystyle}
+
+% Header and Footer Setup
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\nouppercase{\leftmark}}
+\fancyhead[R]{\small FSD Project Report}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% -------------------------------------------------------------
+% DOCUMENT START
+% -------------------------------------------------------------
+\begin{document}
+
+% =============================================================
+% TITLE PAGE
+% =============================================================
+\begin{titlepage}
+    \centering
+    \vspace*{0.5cm}
+    
+    {\Huge \bfseries Hybrid Knowledge Graph and Retrieval-Augmented Generation Platform for Complex Scientific Literature Question-Answering \par}
+    
+    \vspace{1.5cm}
+    {\Large \textbf{Full Stack Development -- Project Report} \par}
+    
+    \vspace{2.0cm}
+    
+    {\large \textbf{Submitted by Team Members:} \par}
+    \vspace{0.8cm}
+    
+    \begin{table}[h]
+        \centering
+        \large
+        \begin{tabular}{ll}
+            \textbf{Name} & \textbf{Register Number} \\
+            \midrule
+            Adithya R & RA2111003010001 \\
+            Team Member 2 & RA2111003010002 \\
+            Team Member 3 & RA2111003010003 \\
+        \end{tabular}
+    \end{table}
+    
+    \vspace{2.0cm}
+    
+    {\large \textbf{Department of Computer Science and Engineering} \par}
+    {\large School of Computing \par}
+    {\large SRM Institute of Science and Technology \par}
+    
+    \vfill
+    
+    {\large \textbf{Academic Year: 2024 -- 2025} \par}
+    \vspace{0.5cm}
+\end{titlepage}
+
+% =============================================================
+% PRELIMINARY PAGES (ROMAN NUMERALS)
+% =============================================================
+\pagenumbering{roman}
+\setcounter{page}{1}
+
+% Table of Contents
+\tableofcontents
+\newpage
+
+% List of Figures
+\listoffigures
+\newpage
+
+% List of Tables
+\listoftables
+\newpage
+
+% =============================================================
+% MAIN CHAPTERS (ARABIC NUMERALS)
+% =============================================================
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% Chapter 1 - Introduction
+\input{chapters/chapter1.tex}
+
+% Chapter 2 - Existing System and Domain Study
+\input{chapters/chapter2.tex}
+
+% Chapter 3 - Proposed System and Requirements
+\input{chapters/chapter3.tex}
+
+% Chapter 4 - System Design and Architecture
+\input{chapters/chapter4.tex}
+
+% Chapter 5 - Implementation
+\input{chapters/chapter5.tex}
+
+% Chapter 6 - Results and Discussion
+\input{chapters/chapter6.tex}
+
+% Chapter 7 - Conclusion and Future Enhancement
+\input{chapters/chapter7.tex}
+
+% =============================================================
+% REFERENCES
+% =============================================================
+\nocite{*}
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+% =============================================================
+% APPENDIX
+% =============================================================
+\input{chapters/appendix.tex}
+
+\end{document}

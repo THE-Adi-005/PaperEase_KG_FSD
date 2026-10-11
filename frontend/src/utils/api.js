@@ -143,3 +143,26 @@ export async function getAblationGraphStats(paperId = null) {
   if (!res.ok) throw new Error('Failed to fetch ablation graph stats');
   return res.json();
 }
+
+export async function getBenchmarkQuestions() {
+  const res = await fetch(`${API_BASE}/benchmark-questions`);
+  if (!res.ok) throw new Error('Failed to fetch benchmark questions');
+  return res.json();
+}
+
+export async function getUnseenQuestions() {
+  const res = await fetch(`${API_BASE}/unseen-questions`);
+  if (!res.ok) throw new Error('Failed to fetch unseen test questions');
+  return res.json();
+}
+
+export async function queryCompareAll(question, paperIds = []) {
+  const res = await fetch(`${API_BASE}/query-compare-all`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, paper_ids: paperIds }),
+  });
+  if (!res.ok) throw new Error('Failed to run 4-way comparison');
+  return res.json();
+}
+

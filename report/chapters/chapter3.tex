@@ -1,0 +1,126 @@
+\chapter{PROPOSED SYSTEM AND REQUIREMENTS}
+
+\section{Proposed System}
+The proposed system, titled \textbf{KG-Paper-Assistant}, is an enterprise-grade, full-stack scientific literature question-answering platform that combines Schema-Constrained Knowledge Graphs, multi-agent ReACT reasoning loops, and interactive graph analytics. The system allows users to upload research paper PDFs, automatically extracts and indexes structural sections and experimental tables, constructs a consensus-filtered property graph in Neo4j, and provides real-time question answering with guaranteed provenance grounding.
+
+At the core of the platform is the **Schema AST Multi-Agent Reasoner**, which orchestrates a Planner, Retriever, Reasoner, and Verifier pipeline. Unlike traditional search engines or flat vector RAG assistants, the proposed application simultaneously executes and evaluates four AI architectures against a verified gold-standard ground truth:
+\begin{enumerate}
+    \item \textbf{Direct Zero-Shot LLM} (Parametric Memory baseline),
+    \item \textbf{Standard Dense Vector RAG} (MiniLM embedding top-5 chunks baseline),
+    \item \textbf{Naive Open-IE Knowledge Graph Agent} (Unconstrained graph baseline), and
+    \item \textbf{Our Proposed Schema-Constrained ReACT Knowledge Graph Agent} (Schema AST traversal with consensus majority voting).
+\end{enumerate}
+
+\section{Major Features}
+The major features implemented in the KG-Paper-Assistant platform include:
+\begin{itemize}
+    \item \textbf{PDF Upload and Structural Section Extraction:} Automatically parses research papers, extracting document metadata, hierarchical sections, subsections, and mathematical equations.
+    \item \textbf{First-Class Table Matrix Extraction:} Preserves multi-column experimental tables as structured coordinate grids, enabling row/column indexing and numerical aggregation.
+    \item \textbf{Consensus-Filtered Knowledge Graph Construction:} Leverages multi-pass extraction with a 50\% majority-vote threshold to eliminate spurious relation edges, storing typed nodes and edges in Neo4j.
+    \item \textbf{Interactive Cytoscape 2D/3D Graph Visualization:} Renders interactive graph networks in the browser with node filtering, cluster layouts, physics simulation, and neighborhood expansion.
+    \item \textbf{4-Model Simultaneous Evaluation Arena:} Runs Direct LLM, Vector RAG, Naive KG, and Our Proposed Agent concurrently upon receiving a query, presenting comparative outputs side-by-side.
+    \item \textbf{Live Multi-Metric Leaderboard:} Dynamically computes and displays five authentic evaluation metrics in real time: Exact Match (EM), Token F1, BLEU, TF-IDF Cosine Similarity, and BERTScore against Gold Standard references.
+    \item \textbf{Provenance and Failure Inspector:} Visualizes the exact paper section citations, retrieved vector chunks, and traversed Cypher graph paths for every generated response, explicitly highlighting why alternative baselines degraded.
+    \item \textbf{80-Q and 100-Q Pre-Evaluated Benchmark Catalog Modal:} Provides an interactive modal catalog allowing users to browse, filter by cognitive tier (Lookup, Multi-hop, Aggregation, Cross-paper, Synthesis), and test benchmark items with one click.
+\end{itemize}
+
+\section{Functional Requirements}
+The functional requirements describe the specific services and behaviors provided by the application:
+\begin{enumerate}
+    \item \textbf{FR-01 (Document Ingestion):} The system shall accept PDF file uploads via drag-and-drop or file selection, validating MIME type and file integrity before queuing for background ingestion.
+    \item \textbf{FR-02 (Graph Construction):} The backend shall extract typed entity nodes (\texttt{Paper}, \texttt{Method}, \texttt{Dataset}, \texttt{Metric}, \texttt{Table}, \texttt{Section}) and typed schema relations ($R_7$), persisting them into Neo4j with unique UUIDs.
+    \item \textbf{FR-03 (Entity Resolution):} The system shall identify cross-paper equivalent entities and establish bidirectional \texttt{SAME\_AS} edges with high-precision string and embedding similarity matching.
+    \item \textbf{FR-04 (Multi-Model Query Execution):} Upon receiving a user prompt, the system shall execute four simultaneous model pipelines (Direct LLM, Vector RAG, Naive KG, and Proposed KG Agent) and return structured responses via asynchronous JSON APIs.
+    \item \textbf{FR-05 (Real-Time SSE Streaming):} For single-agent mode, the backend shall stream intermediate ReACT reasoning steps (Thoughts, Actions, Observations, and Final Answer) to the frontend using Server-Sent Events (SSE).
+    \item \textbf{FR-06 (Multi-Metric Grounded Scoring):} The system shall dynamically compute Exact Match, SQuAD Token F1, sentence BLEU, TF-IDF Cosine Similarity, and token-level BERTScore by comparing model outputs against the verified Gold Standard target.
+    \item \textbf{FR-07 (Graph Exploration):} The frontend shall allow users to click any paper, entity node, or relation edge in the graph visualizer to inspect attributes, connected neighbors, and provenance text.
+    \item \textbf{FR-08 (Benchmark Catalog):} The application shall provide an interactive catalog modal displaying all 100 curated benchmark questions categorized by cognitive tier, allowing users to trigger automated comparative evaluations.
+\end{enumerate}
+
+\section{Non-Functional Requirements}
+The platform satisfies the following critical non-functional software engineering requirements:
+
+\subsection{Performance}
+\begin{itemize}
+    \item \textbf{API Response Latency:} The backend shall return synchronized multi-model comparative results for benchmark queries within 1.2 to 1.5 seconds, providing smooth UI transitions while maintaining interactive responsiveness.
+    \item \textbf{Graph Query Efficiency:} All Cypher graph queries shall execute within $<150$ms in Neo4j by maintaining B-tree indexes on node labels and canonical entity names.
+    \item \textbf{Frontend Bundle Size:} The production React client shall compile to $<400$KB gzipped, loading in $<1.0$s on standard broadband connections.
+\end{itemize}
+
+\subsection{Security}
+\begin{itemize}
+    \item \textbf{Input Sanitization:} All Cypher queries generated by agents shall be parameterized and validated against the allowed Schema AST grammar to prevent Cypher injection vulnerabilities.
+    \item \textbf{File Upload Validation:} PDF uploads shall be restricted to verified binary structures, isolated in dedicated upload directories, and scanned for size limits ($<50$MB).
+    \item \textbf{CORS and Environment Isolation:} Strict Cross-Origin Resource Sharing (CORS) rules shall prevent unauthorized origins from executing agent endpoints.
+\end{itemize}
+
+\subsection{Usability}
+\begin{itemize}
+    \item \textbf{Modern Visual Aesthetics:} The user interface shall adhere to modern, clean design standards featuring a crisp slate/blue palette, responsive glassmorphic cards, clear visual hierarchy, and distinct status badges (green for ACCURATE, red for DEGRADED).
+    \item \textbf{Accessibility and Responsiveness:} The application layout shall adapt gracefully across high-resolution desktop displays (1920x1080) and laptop viewports with intuitive scrolling and side panels.
+\end{itemize}
+
+\subsection{Reliability and Truthfulness}
+\begin{itemize}
+    \item \textbf{Factual Provenance Verification:} Every final answer generated by the Proposed KG Agent must include an explicit section or table provenance citation.
+    \item \textbf{Safe Abstention on Non-Existent Facts:} The system shall achieve $\ge 85\%$ truthful abstention on unanswerable queries rather than producing speculative parametric claims.
+\end{itemize}
+
+\subsection{Scalability}
+\begin{itemize}
+    \item \textbf{Horizontal Component Separation:} The decoupled architecture allows independent scaling of the React frontend (CDN hosted), the FastAPI server (containerized via Docker), and the Neo4j graph cluster.
+\end{itemize}
+
+\section{User Interaction}
+User interaction with the KG-Paper-Assistant platform follows a clean, intuitive, interactive workflow:
+\begin{enumerate}
+    \item \textbf{Corpus Selection:} The user navigates the left sidebar to view the active catalog of verified research papers (e.g., Attention Is All You Need, BERT, GPT-3, RoBERTa, ELECTRA, T5).
+    \item \textbf{Query Submission:} The user types an arbitrary natural language question into the bottom prompt bar, or selects a chip from the \textbf{Live Unseen Test Questions} or \textbf{80-Q / 100-Q Benchmark} rows.
+    \item \textbf{Simultaneous Multi-Model Arena Execution:} The platform displays an active concurrent execution indicator:
+    \begin{quote}
+        \textit{"Simultaneously executing all 4 systems... Querying Direct LLM, Vector RAG Chunks, Unconstrained KG, and Our Schema-Constrained ReACT KG Agent"}
+    \end{quote}
+    \item \textbf{Comparative Output Inspection:} The user inspects the 4 side-by-side architecture cards, reviewing each model's structured output (Answer, Reasoning, Provenance) and automated evaluation status (ACCURATE vs. DEGRADED).
+    \item \textbf{Leaderboard and Failure Mode Analysis:} The user expands the \textbf{Multi-Model Comparative Evaluation Leaderboard} to review exact numeric metrics (BERTScore, Cosine, BLEU, F1, EM, Latency) and reads the diagnostic explanation detailing why flat Vector RAG or Direct LLM failed.
+    \item \textbf{Relational Provenance Exploration:} The user clicks the right-hand panel tabs to toggle between the **RAG vs KG Provenance Inspector**, **Knowledge Graph Visualizer**, **Extracted Figures and Tables**, and **Architecture Pipeline Diagrams**.
+\end{enumerate}
+
+\section{Use Cases}
+The functional capabilities of the system are illustrated through three representative use cases:
+
+\subsection{Use Case 1: Multi-Hop Architectural Parameter Verification}
+\begin{itemize}
+    \item \textbf{Actor:} AI Research Engineer.
+    \item \textbf{User Query:} \textit{"In BERT, what special tokens mark sentence boundaries for pair classification tasks?"}
+    \item \textbf{System Workflow:}
+    \begin{enumerate}
+        \item Direct LLM recalls only \texttt{[CLS]} from pretraining memory, omitting \texttt{[SEP]} (Partial / Degraded).
+        \item Vector RAG retrieves Section 3 chunks describing sequence representation embeddings containing \texttt{[CLS]}, but misses \texttt{[SEP]} due to chunk boundary truncation (Degraded).
+        \item Naive KG Agent encounters 35+ unconstrained relations and times out (Degraded).
+        \item Proposed KG Agent executes Schema AST traversal, finds canonical entity nodes \texttt{[CLS]} and \texttt{[SEP]} linked to Section 2.1 via typed relation edges, and generates a structured answer containing both tokens with 100\% provenance fidelity (Accurate Winner).
+    \end{enumerate}
+\end{itemize}
+
+\subsection{Use Case 2: Cross-Paper Empirical Comparative Reasoning}
+\begin{itemize}
+    \item \textbf{Actor:} Academic Scholar preparing a literature review.
+    \item \textbf{User Query:} \textit{"Comparing BERT and RoBERTa, which paper demonstrates that the Next Sentence Prediction (NSP) task hurts downstream performance?"}
+    \item \textbf{System Workflow:}
+    \begin{enumerate}
+        \item Vector RAG attempts to embed chunks from both Devlin et al. (2018) and Liu et al. (2019), but fragmented paragraphs fail to resolve cross-document entity alignment.
+        \item Proposed KG Agent identifies the shared entity \texttt{Next Sentence Prediction (NSP)} mapped across both papers via \texttt{SAME\_AS} edges.
+        \item It navigates the \texttt{CONTRASTED\_WITH} relation directly to RoBERTa Section 4.2, retrieving the verified finding that removing NSP matches or slightly improves downstream performance.
+    \end{enumerate}
+\end{itemize}
+
+\subsection{Use Case 3: Paragraph-Level Comprehensive Synthesis}
+\begin{itemize}
+    \item \textbf{Actor:} Graduate Student studying pretraining sample efficiency.
+    \item \textbf{User Query:} \textit{"How does ELECTRA's Replaced Token Detection (RTD) task differ from standard Masked Language Modeling, and why does it achieve superior sample efficiency for the same compute budget?"}
+    \item \textbf{System Workflow:}
+    \begin{enumerate}
+        \item Direct LLM provides a superficial summary with hallucinatory compute multipliers.
+        \item Vector RAG retrieves disjoint fragments describing generator loss, missing the discriminator loss formulation.
+        \item Proposed KG Agent traverses verified nodes connecting the Generator, Discriminator, 100\% token binary classification loss, and $4\times$ sample efficiency comparison, synthesizing a cohesive, factual paragraph answer with exact citations to Clark et al. (2020) Sections 2 and 3.
+    \end{enumerate}
+\end{itemize}

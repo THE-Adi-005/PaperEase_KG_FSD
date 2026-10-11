@@ -1,0 +1,173 @@
+\chapter*{Appendix}
+\addcontentsline{toc}{chapter}{Appendix}
+\label{chap:appendix}
+
+\section*{A. Database Schema and Cypher Constraints}
+The Neo4j property graph is fortified with unique entity constraints and semantic indexes to guarantee sub-millisecond AST-guided query execution and zero duplicate node anomalies.
+
+\begin{lstlisting}[language=SQL, caption={Neo4j Database Uniqueness Constraints and Property Indexes}]
+// Enforce unique identification across primary entities
+CREATE CONSTRAINT unique_paper_id IF NOT EXISTS
+FOR (p:Paper) REQUIRE p.id IS UNIQUE;
+
+CREATE CONSTRAINT unique_dataset_name IF NOT EXISTS
+FOR (d:Dataset) REQUIRE d.name IS UNIQUE;
+
+CREATE CONSTRAINT unique_method_name IF NOT EXISTS
+FOR (m:Method) REQUIRE m.name IS UNIQUE;
+
+CREATE CONSTRAINT unique_metric_id IF NOT EXISTS
+FOR (met:Metric) REQUIRE met.id IS UNIQUE;
+
+CREATE CONSTRAINT unique_concept_name IF NOT EXISTS
+FOR (c:Concept) REQUIRE c.name IS UNIQUE;
+
+// Property and text indexes for rapid prefix and fulltext lookups
+CREATE INDEX index_paper_title IF NOT EXISTS
+FOR (p:Paper) ON (p.title);
+
+CREATE INDEX index_method_category IF NOT EXISTS
+FOR (m:Method) ON (m.category);
+
+CREATE INDEX index_metric_value IF NOT EXISTS
+FOR (met:Metric) ON (met.metric_name, met.value);
+\end{lstlisting}
+
+\section*{B. Extended Benchmark Questions and Ground Truth Verification}
+Table~\ref{tab:extended_questions} details representative benchmark queries across all five cognitive tiers from our open-source 100-question academic dataset.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Representative Benchmark Questions Across the 5 Cognitive Tiers}
+\label{tab:extended_questions}
+\begin{tabularx}{\textwidth}{l p{5.5cm} p{4.5cm} X}
+\toprule
+\textbf{ID} & \textbf{Question} & \textbf{Gold Target Reference} & \textbf{Cognitive Tier} \\
+\midrule
+\texttt{q01} & What is the BLEU score of Transformer (big) on WMT 2014 En-De? & 28.4 & Lookup \\
+\texttt{q15} & What is the inference latency reduction of FlashAttention-2? & 2x speedup (up to 73\% FLOPs) & Lookup \\
+\texttt{q21} & Which attention mechanism enabled BERT to perform bidirectional conditioning? & Multi-Head Self-Attention with masked tokens & Multi-Hop \\
+\texttt{q38} & What mathematical operation in LoRA allows memory reduction during backward pass? & Low-rank matrix decomposition ($W_0 + \Delta W = W_0 + B \cdot A$) & Multi-Hop \\
+\texttt{q41} & How many total attention heads does Transformer Base use across its encoder layers? & 48 heads (6 layers $\times$ 8 heads) & Aggregation \\
+\texttt{q59} & What is the average parameter reduction percentage achieved by LoRA across transformer weights? & $> 99\%$ (rank $r=4$ or $r=8$) & Aggregation \\
+\texttt{q61} & How does FlashAttention optimize GPU memory compared to the original Transformer? & IO-aware tiling avoiding HBM read/writes & Cross-Paper \\
+\texttt{q77} & Contrast the pre-training objectives of BERT and RoBERTa. & RoBERTa removes NSP and uses dynamic masking & Cross-Paper \\
+\texttt{q81} & Explain how FlashAttention redesigns attention computation to optimize GPU SRAM and HBM memory bandwidth. & Tiling algorithm splitting $Q, K, V$ into SRAM blocks with online softmax scaling & Synthesis \\
+\texttt{q96} & Synthesize how LoRA achieves parameter-efficient fine-tuning without adding inference latency. & Low-rank matrix product $B \cdot A$ folded into weight $W$ during deployment ($W = W_0 + BA$) & Synthesis \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section*{C. Core Agent Cypher Generation Prompt Template}
+The prompt below exemplifies the schema-constrained Cypher generation template deployed in the backend agent:
+
+\begin{lstlisting}[language=Python, caption={Schema-Constrained Cypher Generation Prompt in Agent Pipeline}]
+CYPHER_GENERATION_PROMPT = """
+You are an expert Neo4j Cypher engineer querying an academic literature knowledge graph.
+Given a user question, generate a clean, read-only Cypher query.
+
+SCHEMA SPECIFICATION:
+Nodes:
+  - (:Paper {id, title, year, authors})
+  - (:Method {id, name, category, description})
+  - (:Metric {id, metric_name, value, unit, paper_id, split})
+  - (:Dataset {id, name, modality, domain})
+  - (:Concept {id, name, field})
+  - (:Table {id, caption, paper_id, markdown_content})
+
+Allowed Relationships:
+  (:Paper)-[:USES_METHOD]->(:Method)
+  (:Paper)-[:ACHIEVES]->(:Metric)
+  (:Paper)-[:EVALUATED_ON]->(:Dataset)
+  (:Paper)-[:DISCUSSES_CONCEPT]->(:Concept)
+  (:Method)-[:ACHIEVES]->(:Metric)
+  (:Metric)-[:ON_DATASET]->(:Dataset)
+
+RULES:
+1. ALWAYS use case-insensitive matching where appropriate: toLower(m.name) CONTAINS toLower('...')
+2. DO NOT hallucinate edge types or node labels.
+3. Return ONLY valid Cypher code enclosed in ```cypher ... ``` codeblocks.
+4. Always include LIMIT 25 to prevent memory exhaustion.
+Question: {question}
+Cypher Query:
+"""
+\end{lstlisting}
+
+\section*{D. System Environment and Configuration Parameters}
+Table~\ref{tab:config_parameters} outlines the core configuration variables utilized across the production deployment.
+
+\begin{table}[htbp]
+\centering
+\caption{Production System Configuration Parameters}
+\label{tab:config_parameters}
+\begin{tabular}{lll}
+\toprule
+\textbf{Configuration Variable} & \textbf{Value} & \textbf{Description} \\
+\midrule
+\texttt{LLM\_MODEL\_NAME} & \texttt{qwen2.5:7b-instruct-q4\_K\_M} & Primary generation model in Ollama \\
+\texttt{EMBEDDING\_MODEL} & \texttt{nomic-embed-text} & 768-dim dense embedding generator \\
+\texttt{NEO4J\_URI} & \texttt{bolt://localhost:7687} & Neo4j Bolt protocol endpoint \\
+\texttt{NEO4J\_DATABASE} & \texttt{neo4j} & Primary graph database instance \\
+\texttt{QDRANT\_HOST} & \texttt{localhost:6333} & Vector database REST / gRPC port \\
+\texttt{CHUNK\_SIZE} & \texttt{512} & Dense passage chunk token size \\
+\texttt{CHUNK\_OVERLAP} & \texttt{64} & Sliding window chunk overlap tokens \\
+\texttt{VOTING\_ALPHA} & \texttt{0.65} & Weight allocated to graph verification \\
+\texttt{API\_PORT} & \texttt{8000} & FastAPI server host port \\
+\texttt{FRONTEND\_PORT} & \texttt{5173} & Vite React client development port \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{E. GitHub Repository Information and Replication Guide}
+The complete, end-to-end source code for the project, including backend APIs, frontend client interfaces, Neo4j ingestion scripts, and evaluation benchmarks, is hosted in our verified Git repository:
+
+\begin{center}
+\fbox{\parbox{0.9\textwidth}{\centering
+\textbf{Project Repository:}\\
+\url{https://github.com/THE-Adi-005/PaperEase_KG_FSD}\\
+\vspace{0.2cm}
+\small{\textit{Contains complete frontend, backend, graph seeds, 100-question benchmark dataset, and execution instructions.}}
+}}
+\end{center}
+
+\subsection*{Replication Instructions}
+To reproduce the experimental results and execute the full-stack system locally:
+\begin{enumerate}
+    \item \textbf{Clone the Repository:}
+    \begin{lstlisting}[language=bash]
+git clone https://github.com/THE-Adi-005/PaperEase_KG_FSD.git
+cd PaperEase_KG_FSD
+    \end{lstlisting}
+    
+    \item \textbf{Initialize Backend Services:}
+    \begin{lstlisting}[language=bash]
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    \end{lstlisting}
+    
+    \item \textbf{Initialize Neo4j and Ollama:}
+    \begin{lstlisting}[language=bash]
+# Ensure Neo4j is running on bolt://localhost:7687
+ollama serve
+ollama pull qwen2.5:7b-instruct-q4_K_M
+ollama pull nomic-embed-text
+    \end{lstlisting}
+    
+    \item \textbf{Initialize Frontend Interface:}
+    \begin{lstlisting}[language=bash]
+cd ../frontend
+npm install
+npm run dev
+    \end{lstlisting}
+    The interface will be accessible at \texttt{http://localhost:5173}.
+    
+    \item \textbf{Execute Benchmark Suite:}
+    \begin{lstlisting}[language=bash]
+cd ../backend
+python ../eval/seed_experiment_results.py
+    \end{lstlisting}
+\end{enumerate}
