@@ -1235,3 +1235,45 @@ body {
   from { opacity: 0; transform: translateX(-8px); }
   to { opacity: 1; transform: translateX(0); }
 }
+
+/* ── Output Menu Bar (Compare Outputs Panel) ── */
+.output-menu-bar {
+  display: flex;
+  background: #f1f5f9;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 3px;
+  overflow-x: auto;
+}
+
+.output-menu-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.69rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.output-menu-btn:hover {
+  color: var(--accent-blue);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.output-menu-btn.active {
+  background: #ffffff;
+  color: var(--accent-blue);
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--border-accent);
+}

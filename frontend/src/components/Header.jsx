@@ -38,14 +38,6 @@ export default function Header({ onToggleSidebar, isSidebarOpen, onOpenCatalog }
       </div>
       
       <div className="header-status">
-        <button 
-          className="action-btn primary"
-          onClick={onOpenCatalog}
-          style={{ marginRight: 12, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
-          title="Browse & Run from 100 Gold Benchmark Questions across 5 Cognitive Tiers"
-        >
-          <BookOpen size={14} /> 📋 Sample Questions (100)
-        </button>
 
         <div className="status-dot" title="Neo4j Knowledge Graph: 1,546 Nodes & 1,634 Relationships">
           <div className={`dot ${health?.neo4j ? 'active' : ''}`} />
