@@ -1,4 +1,4 @@
-from app.triple_filters import min_votes, graph_metrics
+from app.triple_filters import min_votes, graph_metrics, is_generic
 
 
 def test_min_votes():
@@ -17,3 +17,10 @@ def test_graph_metrics():
     assert graph_metrics(4, 6) == (3.0, 0.5)
     assert graph_metrics(0, 0) == (0.0, 0.0)
     assert graph_metrics(1, 0) == (0.0, 0.0)
+
+
+def test_is_generic():
+    assert is_generic("models") is True
+    assert is_generic("the models") is True
+    assert is_generic("our models") is True
+    assert is_generic("BERT") is False

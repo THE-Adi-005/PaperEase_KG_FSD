@@ -19,9 +19,9 @@ def graph_metrics(total_nodes: int, total_edges: int) -> tuple[float, float]:
 GENERIC_ENTITIES = {
     "method", "methods", "approach", "our approach", "our method",
     "proposed method", "the proposed method", "proposed approach",
-    "framework", "our framework", "model", "our model", "the model",
-    "system", "our system", "technique", "algorithm", "baseline",
-    "baselines", "this paper", "this work", "this study", "this section",
+    "framework", "our framework", "model", "models", "our model", "our models",
+    "the model", "the models", "system", "our system", "technique", "algorithm",
+    "baseline", "baselines", "this paper", "this work", "this study", "this section",
     "the section", "paper", "results", "experiments", "task", "tasks",
     "data", "dataset", "datasets", "metric", "metrics", "ours", "we", "it",
 }

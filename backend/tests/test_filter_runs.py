@@ -103,6 +103,9 @@ def test_allow_dynamic_false_drops_dynamic_relation(three_runs):
 def test_is_generic_detection():
     assert is_generic("Our approach") is True
     assert is_generic("  our   approach  ") is True
+    assert is_generic("models") is True
+    assert is_generic("the models") is True
+    assert is_generic("our models") is True
     assert is_generic("BERT") is False
     assert is_generic("Transformer") is False
 

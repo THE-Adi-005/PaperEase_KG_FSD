@@ -5,16 +5,18 @@
   ],
   "ood": [
     "f7d92af0",
-    "393bae80"
+    "680a27f3"
   ],
   "excluded": [
-    "4cf686b3",
-    "53b847cd",
-    "680a27f3",
-    "af45b3fe",
     "demo_attention_2017",
     "demo_bert_2018",
     "demo_gpt3_2020"
   ],
-  "note": "core=ML/NLP papers, ood=off-domain probes, excluded=duplicates and synthetic demo papers"
+  "duplicates_on_disk_only": [
+    "393bae80",
+    "4cf686b3",
+    "53b847cd",
+    "af45b3fe"
+  ],
+  "note": "core=ML/NLP papers, ood=off-domain probes, excluded=synthetic demo papers, duplicates_on_disk_only=patent PDF duplicate uploads not ingested into Neo4j"
 }
