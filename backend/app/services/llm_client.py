@@ -140,6 +140,7 @@ Return ONLY the JSON array, no other text:"""
 
         try:
             response = await self.generate(messages, temperature=temperature, max_tokens=2048)
+            logger.debug(f"RAW model response for section {section_id}: {response}")
             # Parse JSON from response
             triples = self._parse_json_array(response)
             return triples
